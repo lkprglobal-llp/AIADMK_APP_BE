@@ -53,7 +53,7 @@ const options = {
       },
     ],
   },
-  apis: ["./src/index.ts"], // Path to files with JSDoc annotations
+  apis: ["./index.ts"], // Path to files with JSDoc annotations
 };
 
 const jwt = require("jsonwebtoken");
@@ -273,6 +273,10 @@ number of times if the initial request fails. */
 /* The code snippet you provided is defining a POST endpoint `/api/register` in the Express
 application. When a POST request is made to this endpoint, the server executes the callback function
 specified, which handles the registration process for a new user / admin. */
+
+app.get("/", (req, res) => {
+  res.send("Server is up 🚀. Check /api-docs for docs.");
+});
 
 /**
  * @swagger
