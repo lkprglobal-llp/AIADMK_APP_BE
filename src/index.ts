@@ -13,7 +13,7 @@ import multer from "multer";
 //** Swagger definition for API Calls*/
 const options = {
   definition: {
-    openapi: "3.0.4",
+    openapi: "3.0.0",
     info: {
       title: "AIADMK Members Management System API",
       version: "1.0.0",
@@ -53,7 +53,7 @@ const options = {
       },
     ],
   },
-  apis: ["./index.ts"], // Path to files with JSDoc annotations
+  apis: ["./*.ts"], // Path to files with JSDoc annotations
 };
 
 const jwt = require("jsonwebtoken");
@@ -65,7 +65,8 @@ const app = express();
 
 app.use(
   cors({
-    origin: ["http://localhost:5253", "http://localhost:8080"],
+    // origin: ["http://localhost:5253", "http://localhost:8080"],
+    origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
