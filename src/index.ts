@@ -1681,6 +1681,6 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 // app.set("case sensitive routing", false);
 
 /** Start server */
-app.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port}`);
-});
+// app.listen(port, () => {
+//   console.log(`Server is running on http://localhost:${port}`);
+// });
