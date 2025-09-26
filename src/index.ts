@@ -132,11 +132,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   //** Mysql Database connection string */
   // MySQL connection
+  // const dbConfig = {
+  //   host: "localhost",
+  //   user: "lkprglobal_localdev",
+  //   password: "PdK1!gc8Ep%n",
+  //   database: "aiadmk_db",
+  //   waitForConnections: true,
+  //   connectionLimit: 10, // adjust as needed
+  //   queueLimit: 0,
+  // };
+
+  //config for vercel deployment
   const dbConfig = {
     host: "localhost",
-    user: "lkprglobal_localdev",
+    user: "u238482420_lkpr_aiadmk",
     password: "PdK1!gc8Ep%n",
-    database: "aiadmk_db",
+    database: "u238482420_aiadmk",
     waitForConnections: true,
     connectionLimit: 10, // adjust as needed
     queueLimit: 0,
