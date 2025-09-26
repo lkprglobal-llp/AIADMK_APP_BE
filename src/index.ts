@@ -9,7 +9,7 @@ import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
 import fs from "fs";
 import multer from "multer";
-import { url } from "inspector";
+import url from "inspector";
 
 //** Swagger definition for API Calls*/
 const options = {
@@ -55,7 +55,7 @@ const options = {
       },
     ],
   },
-  apis: ["./*.ts"], // Path to files with JSDoc annotations
+  apis: ["./index.ts"], // Path to files with JSDoc annotations
 };
 
 const jwt = require("jsonwebtoken");
@@ -68,7 +68,10 @@ const app = express();
 app.use(
   cors({
     // origin: ["http://localhost:5253", "http://localhost:8080"],
-    origin: "*",
+    origin: [
+      "https://aiadmk-members-app.vercel.app",
+      "https://aiadmk.lkpglobal.com",
+    ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
@@ -1678,7 +1681,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 // app.use(express.static(path.join(__dirname, "dist")));
 
 // // For React routing to work
-// app.get("/*", (req, res) => {
+// app.get("/", (req, res) => {
 //   res.sendFile(path.resolve(__dirname, "dist", "index.html"));
 // });
 // app.set("case sensitive routing", false);
