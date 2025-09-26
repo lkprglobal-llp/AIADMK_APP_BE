@@ -61,7 +61,7 @@ const body_parser = require("body-parser");
 
 const specs = swaggerJsdoc(options);
 const app = express();
-const port = process.env.PORT || 5253; // Include the port variable in .env, if you need to run on the different port
+// const port = process.env.PORT || 5253; // Include the port variable in .env, if you need to run on the different port
 
 app.use(
   cors({
@@ -1684,3 +1684,4 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 // app.listen(port, () => {
 //   console.log(`Server is running on http://localhost:${port}`);
 // });
+export default app;
