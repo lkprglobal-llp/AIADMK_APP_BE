@@ -9,6 +9,7 @@ import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
 import fs from "fs";
 import multer from "multer";
+import { url } from "inspector";
 
 //** Swagger definition for API Calls*/
 const options = {
@@ -35,7 +36,8 @@ const options = {
     },
     servers: [
       {
-        url: "http://localhost:5253",
+        // url: "http://localhost:5253",
+        url: "https://aiadmk-members-app.vercel.app",
       },
     ],
     components: {
