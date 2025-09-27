@@ -187,12 +187,25 @@ const pool = mysql.createPool({
 // });
 
 //Query function to get a connection from the pool
-export async function query<T = any>(sql: string, params?: any[]): Promise<T> {
-  const [rows] = await pool.execute(sql, params);
-  console.log("Connected to MySQL");
-  return rows as T;
-}
 
+// export async function query<T = any>(sql: string, params?: any[]): Promise<T> {
+//   const [rows] = await pool.execute(sql, params);
+//   console.log("Connected to MySQL");
+//   return rows as T;
+// }
+// async function query<T = any>(sql: string, params?: any[]): Promise<T> {
+//   const [rows] = await pool.query(sql, params);
+//   return rows as T; // return only rows
+// }
+async function query<T = any>(sql: string, params?: any[]): Promise<T> {
+  try {
+    const [rows] = await pool.query<T & RowDataPacket[]>(sql, params); // returns rows only
+    return rows;
+  } catch (err) {
+    console.error("DB query error:", err);
+    throw err;
+  }
+}
 //** WhatsApp API configuration*/
 const whatsappToken = process.env.WHATSAPP_TOKEN;
 let whatsappUrl = `https://api.lkprglobal.com/v1/message/send-message?token=${whatsappToken}`;
@@ -534,12 +547,6 @@ app.post(
       res.status(400).json({ success: false, error: "OTP is required" });
       return;
     }
-    if (!query) {
-      res
-        .status(500)
-        .json({ success: false, message: "Database not connected" });
-      return;
-    }
 
     try {
       // Query user with mobile and OTP, including otp_expiry
@@ -603,12 +610,6 @@ app.get(
   "/api/validate-token",
   authenticateToken,
   async (req: AuthRequest, res: Response): Promise<void> => {
-    if (!query) {
-      res
-        .status(500)
-        .json({ success: false, message: "Database not connected" });
-      return;
-    }
     try {
       const [rows] = await query(
         "SELECT id, username, mobile, role FROM admins WHERE role = ?",
@@ -667,12 +668,6 @@ app.get(
   authenticateToken,
   async (req: AuthRequest, res: Response): Promise<void> => {
     if (res.headersSent) return;
-    if (!query) {
-      res
-        .status(500)
-        .json({ success: false, message: "Database not connected" });
-      return;
-    }
     try {
       const rows = await query<RowDataPacket[]>(
         "SELECT id, mobile, name, date_of_birth, parents_name, address, education_qualification, caste, DATE_FORMAT(joining_date, '%Y-%m-%d') as joining_date, joining_details, party_member_number, voter_id, aadhar_number, image, created_at, tname, dname, jname FROM users"
