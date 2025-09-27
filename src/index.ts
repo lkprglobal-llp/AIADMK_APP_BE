@@ -154,9 +154,6 @@ const pool = mysql.createPool({
   user: "u238482420_lkpr_aiadmk",
   password: "CO^RAVc2dU@",
   database: "u238482420_aiadmk",
-  waitForConnections: true,
-  connectionLimit: 10, // adjust as needed
-  queueLimit: 0,
 });
 
 // const dbConfig = {
