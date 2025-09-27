@@ -17,6 +17,7 @@
     "@types/express": "^5.0.3",
     "@types/node": "^24.3.0",
     "@vercel/node": "^5.3.24",
+    "@vercel/speed-insights": "^1.2.0",
     "axios": "^1.11.0",
     "cors": "^2.8.5",
     "csv-parse": "^6.1.0",

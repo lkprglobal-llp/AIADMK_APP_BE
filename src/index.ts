@@ -1,5 +1,6 @@
 import express, { NextFunction, Request, Response } from "express";
 // import { VercelRequest, VercelResponse } from "@vercel/node";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import mysql, { Connection, RowDataPacket } from "mysql2/promise";
 import axios from "axios";
 import cors from "cors";
@@ -37,7 +38,7 @@ const options = {
     servers: [
       {
         // url: "http://localhost:5253",
-        url: "https://aiadmk-members-app.vercel.app",
+        url: "https://aiadmk-app-be.vercel.app",
       },
     ],
     components: {
@@ -157,7 +158,7 @@ const dbConfig = {
   connectionLimit: 10, // adjust as needed
   queueLimit: 0,
 };
-
+SpeedInsights;
 let db: Connection | null = null;
 
 // Initialized database connection
