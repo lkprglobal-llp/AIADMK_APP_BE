@@ -1,6 +1,6 @@
 import express, { NextFunction, Request, Response } from "express";
 // import { VercelRequest, VercelResponse } from "@vercel/node";
-import { SpeedInsights } from "@vercel/speed-insights/next";
+// import { SpeedInsights } from "@vercel/speed-insights/next";
 import mysql, { Connection, RowDataPacket } from "mysql2/promise";
 import axios from "axios";
 import cors from "cors";
@@ -158,7 +158,7 @@ const dbConfig = {
   connectionLimit: 10, // adjust as needed
   queueLimit: 0,
 };
-SpeedInsights;
+
 let db: Connection | null = null;
 
 // Initialized database connection
