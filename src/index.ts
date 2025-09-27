@@ -69,8 +69,8 @@ app.use(
   cors({
     // origin: ["http://localhost:5253", "http://localhost:8080"],
     origin: [
-      "https://aiadmk-members-app.vercel.app",
-      "https://aiadmk.lkpglobal.com",
+      "https://aiadmk-app-be.vercel.app",
+      "https://aiadmk.lkprglobal.com",
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     allowedHeaders: ["Content-Type", "Authorization"],
