@@ -37,7 +37,6 @@ const options = {
     },
     servers: [
       {
-        // url: "http://localhost:5253",
         url: "https://aiadmk-app-be.vercel.app",
       },
     ],
@@ -56,7 +55,7 @@ const options = {
       },
     ],
   },
-  apis: ["./index.ts"], // Path to files with JSDoc annotations
+  apis: ["./src/**/*.ts"], // Path to files with JSDoc annotations
 };
 
 const jwt = require("jsonwebtoken");
@@ -149,7 +148,8 @@ console.log("Environment variables:", {
 // };
 
 //config for vercel deployment
-const dbConfig = {
+
+const pool = mysql.createPool({
   host: "srv1876.hstgr.io",
   user: "u238482420_lkpr_aiadmk",
   password: "CO^RAVc2dU@",
@@ -157,27 +157,44 @@ const dbConfig = {
   waitForConnections: true,
   connectionLimit: 10, // adjust as needed
   queueLimit: 0,
-};
-
-let db: Connection | null = null;
-
-// Initialized database connection
-async function initializeDbConnection() {
-  try {
-    db = await mysql.createConnection(dbConfig);
-    console.log("Connected to MySQL");
-    return db;
-  } catch (err) {
-    console.error("MySQL connection error:", err);
-    throw err;
-  }
-}
-
-// Initialize connection on server start
-initializeDbConnection().catch((err) => {
-  console.error("Failed to initialize MySQL connection:", err);
-  process.exit(1); // Exit if connection fails
 });
+
+// const dbConfig = {
+//   host: "srv1876.hstgr.io",
+//   user: "u238482420_lkpr_aiadmk",
+//   password: "CO^RAVc2dU@",
+//   database: "u238482420_aiadmk",
+//   waitForConnections: true,
+//   connectionLimit: 10, // adjust as needed
+//   queueLimit: 0,
+// };
+
+// let db: Connection | null = null;
+
+// // Initialized database connection
+// async function initializeDbConnection() {
+//   try {
+//     db = await mysql.createConnection(pool.config);
+//     console.log("Connected to MySQL");
+//     return db;
+//   } catch (err) {
+//     console.error("MySQL connection error:", err);
+//     throw err;
+//   }
+// }
+
+// // Initialize connection on server start
+// initializeDbConnection().catch((err) => {
+//   console.error("Failed to initialize MySQL connection:", err);
+//   process.exit(1); // Exit if connection fails
+// });
+
+//Query function to get a connection from the pool
+export async function query<T = any>(sql: string, params?: any[]): Promise<T> {
+  const [rows] = await pool.execute(sql, params);
+  console.log("Connected to MySQL");
+  return rows as T;
+}
 
 //** WhatsApp API configuration*/
 const whatsappToken = process.env.WHATSAPP_TOKEN;
@@ -336,7 +353,7 @@ app.post(
 
     // Check for duplicate mobile
     try {
-      const existingUser = await db?.execute(
+      const existingUser = await query(
         "SELECT * FROM admins WHERE mobile = ?",
         [sanitizedMobile]
       );
@@ -344,7 +361,7 @@ app.post(
         return res.status(400).json({ error: "Mobile number already exists" });
       }
 
-      const result: any = await db?.execute(
+      const result: any = await query(
         "INSERT INTO admins (username, mobile, role) VALUES (?, ?, ?)",
         [username, sanitizedMobile, role]
       );
@@ -415,7 +432,7 @@ app.post(
     const whatsappNumber = formatWhatsAppNumber(mobile);
 
     try {
-      const isLogin: any = await db?.execute(
+      const isLogin: any = await query(
         "SELECT * FROM admins WHERE mobile = ?",
         [sanitizedMobile]
       );
@@ -453,7 +470,7 @@ app.post(
       }
     }
 
-    db?.execute("UPDATE admins SET otp = ?, otp_expiry = ? WHERE mobile = ?", [
+    query("UPDATE admins SET otp = ?, otp_expiry = ? WHERE mobile = ?", [
       otp,
       expiry,
       sanitizedMobile,
@@ -520,7 +537,7 @@ app.post(
       res.status(400).json({ success: false, error: "OTP is required" });
       return;
     }
-    if (!db) {
+    if (!query) {
       res
         .status(500)
         .json({ success: false, message: "Database not connected" });
@@ -529,7 +546,7 @@ app.post(
 
     try {
       // Query user with mobile and OTP, including otp_expiry
-      const [results] = await db.execute<RowDataPacket[]>(
+      const [results] = await query<RowDataPacket[]>(
         "SELECT id, username, created_at, is_verified, role, otp_expiry FROM admins WHERE mobile = ? AND otp = ?",
         [sanitizedMobile, otp]
       );
@@ -541,7 +558,7 @@ app.post(
         return;
       }
 
-      const [user] = results;
+      const user = results;
 
       // Check OTP expiry
       if (user.otp_expiry && new Date(user.otp_expiry) < new Date()) {
@@ -555,7 +572,7 @@ app.post(
       });
 
       // Clear OTP and update is_verified
-      await db.execute(
+      await query(
         "UPDATE admins SET otp = NULL, otp_expiry = NULL, is_verified = 1 WHERE mobile = ?",
         [sanitizedMobile]
       );
@@ -589,14 +606,14 @@ app.get(
   "/api/validate-token",
   authenticateToken,
   async (req: AuthRequest, res: Response): Promise<void> => {
-    if (!db) {
+    if (!query) {
       res
         .status(500)
         .json({ success: false, message: "Database not connected" });
       return;
     }
     try {
-      const [rows] = await db?.execute(
+      const [rows] = await query(
         "SELECT id, username, mobile, role FROM admins WHERE role = ?",
         [req.user?.role]
       );
@@ -653,17 +670,17 @@ app.get(
   authenticateToken,
   async (req: AuthRequest, res: Response): Promise<void> => {
     if (res.headersSent) return;
-    if (!db) {
+    if (!query) {
       res
         .status(500)
         .json({ success: false, message: "Database not connected" });
       return;
     }
     try {
-      const [rows] = await db?.execute<RowDataPacket[]>(
+      const rows = await query<RowDataPacket[]>(
         "SELECT id, mobile, name, date_of_birth, parents_name, address, education_qualification, caste, DATE_FORMAT(joining_date, '%Y-%m-%d') as joining_date, joining_details, party_member_number, voter_id, aadhar_number, image, created_at, tname, dname, jname FROM users"
       );
-      const members: any = rows.map((row) => ({
+      const members = rows.map((row) => ({
         id: row.id,
         name: row.name,
         date_of_birth: row.date_of_birth,
@@ -790,10 +807,9 @@ app.post(
 
     try {
       // 1. Get current member
-      const [rows]: any = await db?.execute(
-        "SELECT * FROM users WHERE mobile = ?",
-        [mobile]
-      );
+      const [rows]: any = await query("SELECT * FROM users WHERE mobile = ?", [
+        mobile,
+      ]);
 
       if (rows.length != 0) {
         return res
@@ -802,7 +818,7 @@ app.post(
       }
 
       // Insert member
-      const [result]: any = await db?.execute(
+      const [result]: any = await query(
         `INSERT INTO users (id, mobile, name, date_of_birth, parents_name, address, education_qualification, caste, joining_date, joining_details, party_member_number, voter_id, aadhar_number, image, tname, dname, jname) VALUES (?,?,?,?,?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
@@ -959,10 +975,7 @@ app.put(
 
     try {
       // 1. Get current member
-      const [rows]: any = await db?.execute(
-        "SELECT * FROM users WHERE id = ?",
-        [id]
-      );
+      const [rows]: any = await query("SELECT * FROM users WHERE id = ?", [id]);
 
       if (!rows || rows.length === 0) {
         return res
@@ -988,7 +1001,7 @@ app.put(
       }
 
       // 3. Uniqueness check
-      const [existingMembers]: any = await db?.execute(
+      const [existingMembers]: any = await query(
         `SELECT * FROM users WHERE (mobile = ? OR party_member_number = ?) AND id != ?`,
         [mobile, party_member_number, id]
       );
@@ -1002,7 +1015,7 @@ app.put(
       }
 
       // 4. Update member
-      const [result]: any = await db?.execute(
+      const [result]: any = await query(
         `UPDATE users 
          SET mobile = ?, name = ?, date_of_birth = ?, parents_name = ?, address = ?, 
              education_qualification = ?, caste = ?, joining_date = ?, 
@@ -1096,10 +1109,9 @@ app.delete("/api/delete-member/:id", async (req: Request, res: Response) => {
 
   try {
     // Fetch existing member first to delete the image file
-    const [rows]: any = await db?.execute(
-      "SELECT image FROM users WHERE id = ?",
-      [memberId]
-    );
+    const [rows]: any = await query("SELECT image FROM users WHERE id = ?", [
+      memberId,
+    ]);
     const member = rows[0];
     if (!member) {
       return res
@@ -1116,9 +1128,7 @@ app.delete("/api/delete-member/:id", async (req: Request, res: Response) => {
     }
     console.log(member.image);
     // Delete from DB
-    const result = await db?.execute("DELETE FROM users WHERE id = ?", [
-      memberId,
-    ]);
+    const result = await query("DELETE FROM users WHERE id = ?", [memberId]);
 
     if ((result as any).affectedRows === 0) {
       return res
@@ -1156,7 +1166,7 @@ app.get(
       return;
     }
     try {
-      const results = await db?.execute(
+      const results = await query(
         "SELECT DISTINCT tcode, dcode, jcode, tname, dname, jname FROM teams"
       );
       const positions = results as TeamRow[];
@@ -1193,7 +1203,7 @@ app.get(
   authenticateToken,
   async (req: Request, res: Response) => {
     try {
-      const [rows]: any = await db?.execute("SELECT * FROM users");
+      const [rows]: any = await query("SELECT * FROM users");
 
       if (!rows.length) {
         return res
@@ -1243,10 +1253,7 @@ app.get(
     const { id } = req.params;
 
     try {
-      const [rows]: any = await db?.execute(
-        "SELECT * FROM users WHERE id = ?",
-        [id]
-      );
+      const [rows]: any = await query("SELECT * FROM users WHERE id = ?", [id]);
 
       if (!rows.length) {
         return res
@@ -1297,7 +1304,7 @@ app.get(
   authenticateToken,
   async (req: Request, res: Response) => {
     try {
-      const [rows]: any = await db?.query(`SELECT * FROM events`);
+      const [rows]: any = await query(`SELECT * FROM events`);
 
       res.json({ success: true, events: rows });
     } catch (err) {
@@ -1360,7 +1367,7 @@ app.get(
 //       const imagePaths = req.files
 //         ? (req.files as Express.Multer.File[]).map((file) => file.path)
 //         : [];
-//       const [result]: any = await db?.execute(
+//       const [result]: any = await query(
 //         `INSERT INTO events (title, type, date, time, location, description, images)
 //        VALUES (?, ?, ?, ?, ?, ?, ?)`,
 //         [
@@ -1416,7 +1423,7 @@ app.post(
       // Get uploaded image paths
 
       // Save to DB (example)
-      const [result]: any = await db?.execute(
+      const [result]: any = await query(
         `INSERT INTO events (title, type, date, time, location, description, images)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
@@ -1479,10 +1486,9 @@ app.get(
   async (req: Request, res: Response) => {
     const { id } = req.params;
     try {
-      const [rows]: any = await db?.execute(
-        "SELECT * FROM events WHERE id = ?",
-        [id]
-      );
+      const [rows]: any = await query("SELECT * FROM events WHERE id = ?", [
+        id,
+      ]);
       if (rows.length === 0) {
         return res
           .status(404)
@@ -1580,10 +1586,9 @@ app.put(
     const { title, type, date, time, location, description } = req.body;
 
     try {
-      const [rows]: any = await db?.execute(
-        "SELECT * FROM events WHERE id = ?",
-        [id]
-      );
+      const [rows]: any = await query("SELECT * FROM events WHERE id = ?", [
+        id,
+      ]);
       if (rows.length === 0) {
         return res
           .status(404)
@@ -1602,7 +1607,7 @@ app.put(
         ? [oldImage]
         : [];
 
-      await db?.execute(
+      await query(
         `UPDATE events SET title=?, type=?, date=?, time=?, location=?, description=?, images=? WHERE id=?`,
         [
           title,
@@ -1640,10 +1645,9 @@ app.delete(
     const { id } = req.params;
 
     try {
-      const [rows]: any = await db?.execute(
-        "SELECT * FROM events WHERE id = ?",
-        [id]
-      );
+      const [rows]: any = await query("SELECT * FROM events WHERE id = ?", [
+        id,
+      ]);
       if (rows.length === 0) {
         return res
           .status(404)
@@ -1659,7 +1663,7 @@ app.delete(
         });
       }
 
-      await db?.execute("DELETE FROM events WHERE id = ?", [id]);
+      await query("DELETE FROM events WHERE id = ?", [id]);
 
       res.json({ success: true, message: "Event deleted successfully" });
     } catch (err) {
@@ -1688,7 +1692,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 // app.set("case sensitive routing", false);
 
 /** Start server */
-// app.listen(port, () => {
-//   console.log(`Server is running on http://localhost:${port}`);
+// app.listen(5253, () => {
+//   console.log(`Server is running on http://localhost:5253`);
 // });
 export default app;
