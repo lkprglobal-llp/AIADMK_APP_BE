@@ -8,7 +8,7 @@ import path from "path";
 import "dotenv/config";
 import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
-import fs from "fs";
+import fs, { access } from "fs";
 import multer from "multer";
 import url from "inspector";
 
@@ -38,6 +38,7 @@ const options = {
     servers: [
       {
         url: "https://aiadmk-app-be.vercel.app",
+        // url: "http://localhost:5253",
       },
     ],
     components: {
@@ -70,9 +71,12 @@ app.use(
     // origin: ["http://localhost:5253", "http://localhost:8080"],
     origin: [
       "https://aiadmk-app-be.vercel.app",
+      "https://aiadmk-app-be.vercel.app/api-docs",
       "https://aiadmk.lkprglobal.com",
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    credentials: true,
+    exposedHeaders: ["Content-Disposition"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
@@ -197,7 +201,10 @@ const pool = mysql.createPool({
 //   const [rows] = await pool.query(sql, params);
 //   return rows as T; // return only rows
 // }
-async function query<T = any>(sql: string, params?: any[]): Promise<T> {
+async function query<T = RowDataPacket[]>(
+  sql: string,
+  params?: any[]
+): Promise<T> {
   try {
     const [rows] = await pool.query<T & RowDataPacket[]>(sql, params); // returns rows only
     return rows;
@@ -484,7 +491,7 @@ app.post(
       otp,
       expiry,
       sanitizedMobile,
-    ]).then(([result]: [any, any]) => {
+    ]).then((result: any) => {
       if (result.affectedRows === 0) {
         return res.status(404).json({ error: "Mobile number not found" });
       }
@@ -1684,7 +1691,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 // app.set("case sensitive routing", false);
 
 /** Start server */
-// app.listen(5253, () => {
-//   console.log(`Server is running on http://localhost:5253`);
-// });
-export default app;
+app.listen(5253, () => {
+  console.log(`Server is running on http://localhost:5253`);
+});
+// export default app;
