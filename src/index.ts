@@ -139,8 +139,12 @@ console.log("Environment variables:", {
   WHATSAPP_TOKEN: process.env.WHATSAPP_TOKEN ? "****" : "undefined",
 });
 
-//** Mysql Database connection string */
-// MySQL connection
+/* The above code is a commented-out configuration object for a database connection in a TypeScript
+file. It contains properties such as host, user, password, database, waitForConnections,
+connectionLimit, and queueLimit. These properties define the settings for connecting to a database,
+including the host address, user credentials, database name, connection limits, and queue limits.
+The code is currently commented out, so it is not actively used in the program. */
+
 // const dbConfig = {
 //   host: "localhost",
 //   user: "lkprglobal_localdev",
@@ -151,56 +155,26 @@ console.log("Environment variables:", {
 //   queueLimit: 0,
 // };
 
-//config for vercel deployment
-
+/* The above code is creating a connection pool using the `mysql` module in TypeScript. It specifies
+the host, user, password, and database details for connecting to a MySQL database. It also sets some
+configuration options for the connection pool such as `waitForConnections`, `connectionLimit`,
+`enableKeepAlive`, `queueLimit`, and `keepAliveInitialDelay`. This connection pool can be used to
+efficiently manage multiple database connections and handle database operations in a scalable
+manner. */
 const pool = mysql.createPool({
   host: "srv1876.hstgr.io",
   user: "u238482420_lkpr_aiadmk",
   password: "CO^RAVc2dU@",
   database: "u238482420_aiadmk",
+  waitForConnections: true,
+  connectionLimit: 10,
+  enableKeepAlive: true, // helps avoid idle timeout
+  queueLimit: 0,
+  keepAliveInitialDelay: 0,
 });
 
-// const dbConfig = {
-//   host: "srv1876.hstgr.io",
-//   user: "u238482420_lkpr_aiadmk",
-//   password: "CO^RAVc2dU@",
-//   database: "u238482420_aiadmk",
-//   waitForConnections: true,
-//   connectionLimit: 10, // adjust as needed
-//   queueLimit: 0,
-// };
+// Initialized database connection
 
-// let db: Connection | null = null;
-
-// // Initialized database connection
-// async function initializeDbConnection() {
-//   try {
-//     db = await mysql.createConnection(pool.config);
-//     console.log("Connected to MySQL");
-//     return db;
-//   } catch (err) {
-//     console.error("MySQL connection error:", err);
-//     throw err;
-//   }
-// }
-
-// // Initialize connection on server start
-// initializeDbConnection().catch((err) => {
-//   console.error("Failed to initialize MySQL connection:", err);
-//   process.exit(1); // Exit if connection fails
-// });
-
-//Query function to get a connection from the pool
-
-// export async function query<T = any>(sql: string, params?: any[]): Promise<T> {
-//   const [rows] = await pool.execute(sql, params);
-//   console.log("Connected to MySQL");
-//   return rows as T;
-// }
-// async function query<T = any>(sql: string, params?: any[]): Promise<T> {
-//   const [rows] = await pool.query(sql, params);
-//   return rows as T; // return only rows
-// }
 async function query<T = RowDataPacket[]>(
   sql: string,
   params?: any[]
