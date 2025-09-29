@@ -592,26 +592,24 @@ app.get(
   authenticateToken,
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-      const [rows] = await query(
+      const rows = await query(
         "SELECT id, username, mobile, role FROM admins WHERE role = ?",
         [req.user?.role]
       );
 
-      const result = rows as RowDataPacket[];
-
-      if (result.length === 0) {
+      if (rows.length === 0) {
         res.status(404).json({ success: false, message: "User not found" });
         return;
       }
 
-      const user = result.flatMap((row) => ({
+      const user = rows.map((row) => ({
         id: row.id,
         username: row.username,
         mobile: row.mobile,
         role: row.role,
       }));
 
-      const [firstUser] = user;
+      const firstUser = user[0];
 
       res.json({
         success: true,
@@ -780,7 +778,7 @@ app.post(
 
     try {
       // 1. Get current member
-      const [rows]: any = await query("SELECT * FROM users WHERE mobile = ?", [
+      const rows: any = await query("SELECT * FROM users WHERE mobile = ?", [
         mobile,
       ]);
 
@@ -791,7 +789,7 @@ app.post(
       }
 
       // Insert member
-      const [result]: any = await query(
+      const result: any = await query(
         `INSERT INTO users (id, mobile, name, date_of_birth, parents_name, address, education_qualification, caste, joining_date, joining_details, party_member_number, voter_id, aadhar_number, image, tname, dname, jname) VALUES (?,?,?,?,?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
@@ -948,7 +946,7 @@ app.put(
 
     try {
       // 1. Get current member
-      const [rows]: any = await query("SELECT * FROM users WHERE id = ?", [id]);
+      const rows: any = await query("SELECT * FROM users WHERE id = ?", [id]);
 
       if (!rows || rows.length === 0) {
         return res
@@ -1082,7 +1080,7 @@ app.delete("/api/delete-member/:id", async (req: Request, res: Response) => {
 
   try {
     // Fetch existing member first to delete the image file
-    const [rows]: any = await query("SELECT image FROM users WHERE id = ?", [
+    const rows: any = await query("SELECT image FROM users WHERE id = ?", [
       memberId,
     ]);
     const member = rows[0];
@@ -1176,7 +1174,7 @@ app.get(
   authenticateToken,
   async (req: Request, res: Response) => {
     try {
-      const [rows]: any = await query("SELECT * FROM users");
+      const rows: any = await query("SELECT * FROM users");
 
       if (!rows.length) {
         return res
@@ -1226,7 +1224,7 @@ app.get(
     const { id } = req.params;
 
     try {
-      const [rows]: any = await query("SELECT * FROM users WHERE id = ?", [id]);
+      const rows: any = await query("SELECT * FROM users WHERE id = ?", [id]);
 
       if (!rows.length) {
         return res
@@ -1277,7 +1275,7 @@ app.get(
   authenticateToken,
   async (req: Request, res: Response) => {
     try {
-      const [rows]: any = await query(`SELECT * FROM events`);
+      const rows: any = await query(`SELECT * FROM events`);
 
       res.json({ success: true, events: rows });
     } catch (err) {
@@ -1459,9 +1457,7 @@ app.get(
   async (req: Request, res: Response) => {
     const { id } = req.params;
     try {
-      const [rows]: any = await query("SELECT * FROM events WHERE id = ?", [
-        id,
-      ]);
+      const rows: any = await query("SELECT * FROM events WHERE id = ?", [id]);
       if (rows.length === 0) {
         return res
           .status(404)
@@ -1559,9 +1555,7 @@ app.put(
     const { title, type, date, time, location, description } = req.body;
 
     try {
-      const [rows]: any = await query("SELECT * FROM events WHERE id = ?", [
-        id,
-      ]);
+      const rows: any = await query("SELECT * FROM events WHERE id = ?", [id]);
       if (rows.length === 0) {
         return res
           .status(404)
@@ -1618,9 +1612,7 @@ app.delete(
     const { id } = req.params;
 
     try {
-      const [rows]: any = await query("SELECT * FROM events WHERE id = ?", [
-        id,
-      ]);
+      const rows: any = await query("SELECT * FROM events WHERE id = ?", [id]);
       if (rows.length === 0) {
         return res
           .status(404)
