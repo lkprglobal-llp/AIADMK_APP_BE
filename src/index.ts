@@ -10,9 +10,6 @@ import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
 import fs, { access } from "fs";
 import multer from "multer";
-import url from "inspector";
-import { error } from "console";
-import { image } from "pdfkit";
 
 //** Swagger definition for API Calls*/
 const options = {
@@ -40,7 +37,6 @@ const options = {
     servers: [
       {
         url: "https://aiadmk-app-be.vercel.app",
-        // url: "http://localhost:5253",
       },
     ],
     components: {
@@ -1067,7 +1063,7 @@ app.delete("/api/delete-member/:id", async (req: Request, res: Response) => {
 
   try {
     // Fetch existing member first to delete the image file
-    const rows: any = await query("SELECT image FROM users WHERE id = ?", [
+    const rows: any = await query("SELECT * FROM users WHERE id = ?", [
       memberId,
     ]);
     const member = rows[0];
@@ -1077,13 +1073,13 @@ app.delete("/api/delete-member/:id", async (req: Request, res: Response) => {
         .json({ success: false, message: "Member not found" });
     }
 
-    // Delete image file from disk
-    if (member.image) {
-      const imagePath = path.join(__dirname, "../src/", member.image); // adjust path
-      fs.unlink(imagePath, (err) => {
-        if (err) console.warn("Failed to delete image file:", err);
-      });
-    }
+    // // Delete image file from disk
+    // if (member.image) {
+    //   const imagePath = path.join(__dirname, "../src/", member.image); // adjust path
+    //   fs.unlink(imagePath, (err) => {
+    //     if (err) console.warn("Failed to delete image file:", err);
+    //   });
+    // }
     // Delete from DB
     const result = await query("DELETE FROM users WHERE id = ?", [memberId]);
 
