@@ -693,7 +693,7 @@ app.get(
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
  *             type: object
  *             properties:
@@ -719,6 +719,7 @@ app.get(
  *                 type: string
  *               image:
  *                 type: string
+ *                 format: binary
  *               dname:
  *                 type: string
  *               tname:
@@ -736,7 +737,6 @@ app.get(
  *               - party_member_number
  *               - voter_id
  *               - aadhar_number
- *               - image
  *               - dname
  *               - tname
  *               - jname
@@ -827,8 +827,7 @@ app.post(
       return res.json({
         success: true,
         member: {
-          imageData: imageBuffer,
-          imageType: imageType,
+          id,
           name,
           mobile,
           joining_date,
