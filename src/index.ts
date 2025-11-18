@@ -1223,10 +1223,10 @@ app.get(
       ].join("\n");
 
       res.setHeader("Content-Type", "text/csv");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename=member_${member?.party_member_number}.csv`
-      );
+      // res.setHeader(
+      //   "Content-Disposition",
+      //   `attachment; filename=member_${member?.party_member_number}.csv`
+      // );
       await res.send(csv);
       res.end();
     } catch (error) {
@@ -1575,6 +1575,365 @@ app.delete(
       res
         .status(500)
         .json({ success: false, message: "Failed to delete event" });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/view-funds:
+ *   get:
+ *     summary: Get all funds
+ *     tags: [Funds]
+ *     responses:
+ *       200:
+ *         description: List of all funds
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ */
+app.get(
+  "/api/view-funds",
+  authenticateToken,
+  async (req: Request, res: Response) => {
+    try {
+      const rows = await query(
+        "SELECT id, taskname, tunion, tparvunion, tpanchayat, tvillage, year, fundname, boothno, status, created_at, updated_at FROM funds"
+      );
+      res.json({ success: true, funds: rows, count: rows.length });
+    } catch (error) {
+      console.error("Get funds error:", error);
+      res.status(500).json({ success: false, message: "Server error" });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/funds/{id}:
+ *   get:
+ *     summary: Get fund by ID
+ *     tags: [Funds]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Fund details
+ *       404:
+ *         description: Fund not found
+ */
+app.get(
+  "/api/funds/:id",
+  authenticateToken,
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    try {
+      const rows: any = await query("SELECT * FROM funds WHERE id = ?", [id]);
+      if (rows.length === 0) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Fund not found" });
+      }
+      res.json({ success: true, fund: rows[0] });
+    } catch (error) {
+      console.error("Get fund error:", error);
+      res.status(500).json({ success: false, message: "Server error" });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/add-fund:
+ *   post:
+ *     tags: [Funds]
+ *     summary: Create a new fund
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               taskname:
+ *                 type: string
+ *               tunion:
+ *                 type: string
+ *               tparvunion:
+ *                 type: string
+ *               tpanchayat:
+ *                 type: string
+ *               tvillage:
+ *                 type: string
+ *               year:
+ *                 type: string
+ *               fundname:
+ *                 type: string
+ *               boothno:
+ *                 type: integer
+ *               status:
+ *                 type: string
+ *             required:
+ *               - taskname
+ *               - tunion
+ *               - fundname
+ *               - boothno
+ *     responses:
+ *       201:
+ *         description: Fund created successfully
+ *       400:
+ *         description: Invalid input
+ *       500:
+ *         description: Server error
+ */
+app.post(
+  "/api/add-fund",
+  authenticateToken,
+  express.json({ limit: "100mb" }),
+  body_parser.json({ limit: "100mb" }),
+  async (req: Request, res: Response) => {
+    const {
+      taskname,
+      tunion,
+      tparvunion,
+      tpanchayat,
+      tvillage,
+      year,
+      fundname,
+      boothno,
+      status,
+    } = req.body;
+
+    // Validate required fields
+    if (!taskname || !tunion || !fundname || boothno === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "taskname, tunion, fundname, and boothno are required",
+      });
+    }
+
+    try {
+      const result: any = await query(
+        `INSERT INTO funds (taskname, tunion, tparvunion, tpanchayat, tvillage, year, fundname, boothno, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          taskname,
+          tunion,
+          tparvunion || null,
+          tpanchayat || null,
+          tvillage || null,
+          year || null,
+          fundname,
+          boothno,
+          status || "Active",
+        ]
+      );
+
+      return res.status(201).json({
+        success: true,
+        fund: {
+          id: result.insertId,
+          taskname,
+          tunion,
+          tparvunion,
+          tpanchayat,
+          tvillage,
+          year,
+          fundname,
+          boothno,
+          status: status || "Active",
+        },
+        message: "Fund created successfully",
+      });
+    } catch (error) {
+      console.error("Add fund error:", error);
+      res.status(500).json({ success: false, message: "Server error" });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/update-fund/{id}:
+ *   put:
+ *     tags: [Funds]
+ *     summary: Update an existing fund
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               taskname:
+ *                 type: string
+ *               tunion:
+ *                 type: string
+ *               tparvunion:
+ *                 type: string
+ *               tpanchayat:
+ *                 type: string
+ *               tvillage:
+ *                 type: string
+ *               year:
+ *                 type: string
+ *               fundname:
+ *                 type: string
+ *               boothno:
+ *                 type: integer
+ *               status:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Fund updated successfully
+ *       404:
+ *         description: Fund not found
+ *       500:
+ *         description: Server error
+ */
+app.put(
+  "/api/update-fund/:id",
+  authenticateToken,
+  express.json({ limit: "100mb" }),
+  body_parser.json({ limit: "100mb" }),
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const {
+      taskname,
+      tunion,
+      tpartyunion,
+      tpanchayat,
+      tvillage,
+      year,
+      fundname,
+      boothno,
+      status,
+    } = req.body;
+
+    if (!id) {
+      return res
+        .status(400)
+        .json({ success: false, message: "ID is required" });
+    }
+
+    try {
+      // Check if fund exists
+      const rows: any = await query("SELECT * FROM funds WHERE id = ?", [id]);
+      if (rows.length === 0) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Fund not found" });
+      }
+
+      const result: any = await query(
+        `UPDATE funds SET taskname = ?, tunion = ?, tparvunion = ?, tpanchayat = ?, tvillage = ?, year = ?, fundname = ?, boothno = ?, status = ? WHERE id = ?`,
+        [
+          taskname || rows[0].taskname,
+          tunion || rows[0].tunion,
+          tpartyunion || rows[0].tparvunion,
+          tpanchayat || rows[0].tpanchayat,
+          tvillage || rows[0].tvillage,
+          year || rows[0].year,
+          fundname || rows[0].fundname,
+          boothno !== undefined ? boothno : rows[0].boothno,
+          status || rows[0].status,
+          id,
+        ]
+      );
+
+      if (result.affectedRows === 0) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Update failed" });
+      }
+
+      return res.json({
+        success: true,
+        message: "Fund updated successfully",
+        fund: {
+          id: parseInt(id),
+          taskname: taskname || rows[0].taskname,
+          tunion: tunion || rows[0].tunion,
+          tparvunion: tparvunion || rows[0].tparvunion,
+          tpanchayat: tpanchayat || rows[0].tpanchayat,
+          tvillage: tvillage || rows[0].tvillage,
+          year: year || rows[0].year,
+          fundname: fundname || rows[0].fundname,
+          boothno: boothno !== undefined ? boothno : rows[0].boothno,
+          status: status || rows[0].status,
+        },
+      });
+    } catch (error) {
+      console.error("Update fund error:", error);
+      res.status(500).json({ success: false, message: "Server error" });
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/delete-fund/{id}:
+ *   delete:
+ *     tags: [Funds]
+ *     summary: Delete a fund
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Fund deleted successfully
+ *       404:
+ *         description: Fund not found
+ *       500:
+ *         description: Server error
+ */
+app.delete(
+  "/api/delete-fund/:id",
+  authenticateToken,
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    if (!id) {
+      return res
+        .status(400)
+        .json({ success: false, message: "ID is required" });
+    }
+
+    try {
+      // Check if fund exists
+      const rows: any = await query("SELECT * FROM funds WHERE id = ?", [id]);
+      if (rows.length === 0) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Fund not found" });
+      }
+
+      const result: any = await query("DELETE FROM funds WHERE id = ?", [id]);
+
+      if (result.affectedRows === 0) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Delete failed" });
+      }
+
+      res.json({ success: true, message: "Fund deleted successfully" });
+    } catch (error) {
+      console.error("Delete fund error:", error);
+      res.status(500).json({ success: false, message: "Server error" });
     }
   }
 );
