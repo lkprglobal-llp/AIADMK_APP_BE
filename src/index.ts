@@ -1599,7 +1599,7 @@ app.get(
   async (req: Request, res: Response) => {
     try {
       const rows = await query(
-        "SELECT id, taskname, tunion, tparvunion, tpanchayat, tvillage, year, fundname, boothno, status, created_at, updated_at FROM funds"
+        "SELECT id, taskname, tunion, tpartyunion, tpanchayat, tvillage, year, fundname, boothno, status, created_at, updated_at FROM funds"
       );
       res.json({ success: true, funds: rows, count: rows.length });
     } catch (error) {
@@ -1664,7 +1664,7 @@ app.get(
  *                 type: string
  *               tunion:
  *                 type: string
- *               tparvunion:
+ *               tpartyunion:
  *                 type: string
  *               tpanchayat:
  *                 type: string
@@ -1700,7 +1700,7 @@ app.post(
     const {
       taskname,
       tunion,
-      tparvunion,
+      tpartyunion,
       tpanchayat,
       tvillage,
       year,
@@ -1719,12 +1719,12 @@ app.post(
 
     try {
       const result: any = await query(
-        `INSERT INTO funds (taskname, tunion, tparvunion, tpanchayat, tvillage, year, fundname, boothno, status)
+        `INSERT INTO funds (taskname, tunion, tpartyunion, tpanchayat, tvillage, year, fundname, boothno, status)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           taskname,
           tunion,
-          tparvunion || null,
+          tpartyunion || null,
           tpanchayat || null,
           tvillage || null,
           year || null,
@@ -1740,7 +1740,7 @@ app.post(
           id: result.insertId,
           taskname,
           tunion,
-          tparvunion,
+          tpartyunion,
           tpanchayat,
           tvillage,
           year,
@@ -1780,7 +1780,7 @@ app.post(
  *                 type: string
  *               tunion:
  *                 type: string
- *               tparvunion:
+ *               tpartyunion:
  *                 type: string
  *               tpanchayat:
  *                 type: string
@@ -1837,11 +1837,11 @@ app.put(
       }
 
       const result: any = await query(
-        `UPDATE funds SET taskname = ?, tunion = ?, tparvunion = ?, tpanchayat = ?, tvillage = ?, year = ?, fundname = ?, boothno = ?, status = ? WHERE id = ?`,
+        `UPDATE funds SET taskname = ?, tunion = ?, tpartyunion = ?, tpanchayat = ?, tvillage = ?, year = ?, fundname = ?, boothno = ?, status = ? WHERE id = ?`,
         [
           taskname || rows[0].taskname,
           tunion || rows[0].tunion,
-          tpartyunion || rows[0].tparvunion,
+          tpartyunion || rows[0].tpartyunion,
           tpanchayat || rows[0].tpanchayat,
           tvillage || rows[0].tvillage,
           year || rows[0].year,
@@ -1865,7 +1865,7 @@ app.put(
           id: parseInt(id),
           taskname: taskname || rows[0].taskname,
           tunion: tunion || rows[0].tunion,
-          tparvunion: tparvunion || rows[0].tparvunion,
+          tpartyunion: tpartyunion || rows[0].tpartyunion,
           tpanchayat: tpanchayat || rows[0].tpanchayat,
           tvillage: tvillage || rows[0].tvillage,
           year: year || rows[0].year,
