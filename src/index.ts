@@ -59,6 +59,7 @@ const options = {
 
 const jwt = require("jsonwebtoken");
 const body_parser = require("body-parser");
+const bcrypt = require("bcryptjs");
 
 const specs = swaggerJsdoc(options);
 const app = express();
@@ -333,7 +334,7 @@ app.post(
   express.json({ limit: "100mb" }),
   body_parser.json({ limit: "100mb" }),
   async (req, res) => {
-    const { username, mobile, role } = req.body;
+    const { username, mobile, email, password, role } = req.body;
     const sanitizedMobile = sanitizePhoneNumber(mobile);
     // Validate input
     if (!mobile) {
@@ -352,13 +353,13 @@ app.post(
         "SELECT * FROM admins WHERE mobile = ?",
         [sanitizedMobile]
       );
-      if (!existingUser) {
+      if (existingUser.length > 0) {
         return res.status(400).json({ error: "Mobile number already exists" });
       }
 
       const result: any = await query(
-        "INSERT INTO admins (username, mobile, role) VALUES (?, ?, ?)",
-        [username, sanitizedMobile, role]
+        "INSERT INTO admins (username, email, password, mobile, role) VALUES (?, ?, ?, ?, ?)",
+        [username, email, password, sanitizedMobile, role]
       );
       const insertId = (result as any).insertId;
       return res.status(201).json({
@@ -367,6 +368,8 @@ app.post(
         user: {
           id: insertId,
           username,
+          email,
+          password,
           mobile: sanitizedMobile,
           role,
         },
@@ -439,31 +442,29 @@ app.post(
     }
 
     // Function to send OTP via WhatsApp
-    async function sendWhatsAppOTP() {
-      try {
-        const response = await axios.post(whatsappUrl, {
-          to: whatsappNumber,
-          type: "template",
-          template: {
-            language: { policy: "deterministic", code: "en" },
-            name: "otp_copy",
-            components: [
-              { type: "body", parameters: [{ type: "text", text: otp }] },
-              {
-                type: "button",
-                sub_type: "url",
-                index: "0",
-                parameters: [{ type: "text", text: otp }],
-              },
-            ],
-          },
-        });
 
-        console.log("WhatsApp API response:", response.data);
-      } catch (error) {
-        console.error("WhatsApp API error:", error);
-      }
+    try {
+      const response = await axios.post(whatsappUrl, {
+        to: whatsappNumber,
+        type: "template",
+        template: {
+          language: { policy: "deterministic", code: "en" },
+          name: "otp_copy",
+          components: [
+            { type: "body", parameters: [{ type: "text", text: otp }] },
+            {
+              type: "button",
+              sub_type: "url",
+              index: "0",
+              parameters: [{ type: "text", text: otp }],
+            },
+          ],
+        },
+      });
+    } catch (error) {
+      console.error("WhatsApp API error:", error);
     }
+    // Store OTP and expiry in database
 
     query("UPDATE admins SET otp = ?, otp_expiry = ? WHERE mobile = ?", [
       otp,
@@ -474,9 +475,182 @@ app.post(
         return res.status(404).json({ error: "Mobile number not found" });
       }
       // Send OTP via WhatsApp
-      sendWhatsAppOTP();
+
       return res.status(200).json({ message: "OTP sent successfully" });
     });
+  }
+);
+
+// // ----------------------------
+// // Email/password registration
+// // ----------------------------
+// /**
+//  * @swagger
+//  * /api/register-email:
+//  *   post:
+//  *     tags: [Auth]
+//  *     summary: Register a user/admin with email and password
+//  *     requestBody:
+//  *       required: true
+//  *       content:
+//  *         application/json:
+//  *           schema:
+//  *             type: object
+//  *             properties:
+//  *               username:
+//  *                 type: string
+//  *               email:
+//  *                 type: string
+//  *               password:
+//  *                 type: string
+//  *               role:
+//  *                 type: string
+//  *             required:
+//  *               - email
+//  *               - password
+//  *     responses:
+//  *       201:
+//  *         description: Registered successfully
+//  */
+// app.post(
+//   "/api/register-email",
+//   express.json({ limit: "100mb" }),
+//   body_parser.json({ limit: "100mb" }),
+//   async (req: Request, res: Response) => {
+//     const { username, email, password, role } = req.body;
+//     if (!email || !password) {
+//       return res
+//         .status(400)
+//         .json({ success: false, message: "Email and password are required" });
+//     }
+
+//     try {
+//       // Check duplicate email
+//       const existing: any = await query(
+//         "SELECT * FROM admins WHERE email = ?",
+//         [email]
+//       );
+//       if (existing && existing.length > 0) {
+//         return res
+//           .status(400)
+//           .json({ success: false, message: "Email already registered" });
+//       }
+
+//       const hashed = await bcrypt.hash(password, 10);
+//       const result: any = await query(
+//         "INSERT INTO admins (username, email, password, role, created_at) VALUES (?, ?, ?, ?, NOW())",
+//         [username || null, email, hashed, role || "admin"]
+//       );
+
+//       return res.status(201).json({
+//         success: true,
+//         id: result.insertId || null,
+//         message: "Registered successfully",
+//       });
+//     } catch (err) {
+//       console.error("Register-email error:", err);
+//       return res.status(500).json({ success: false, message: "Server error" });
+//     }
+//   }
+// );
+
+// ----------------------------
+// Email/password login
+// ----------------------------
+/**
+ * @swagger
+ * /api/login-email:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Login using email and password
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *             required:
+ *               - email
+ *               - password
+ *     responses:
+ *       200:
+ *         description: Login successful
+ */
+app.post(
+  "/api/login-email",
+  express.json({ limit: "100mb" }),
+  body_parser.json({ limit: "100mb" }),
+  async (req: Request, res: Response) => {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Email and password are required" });
+    }
+
+    try {
+      const rows: any = await query("SELECT * FROM admins WHERE email = ?", [
+        email,
+      ]);
+      if (!rows || rows.length === 0) {
+        return res
+          .status(404)
+          .json({ success: false, message: "User not found" });
+      }
+      const user = rows[0];
+
+      // Compare hashed password, or if legacy plain-text, accept and re-hash
+      let passwordMatch = false;
+      try {
+        passwordMatch = await bcrypt.compare(password, user.password || "");
+      } catch (e) {
+        passwordMatch = false;
+      }
+
+      if (!passwordMatch) {
+        // If stored as plain text (legacy), accept and re-hash
+        if (user.password === password) {
+          const newHash = await bcrypt.hash(password, 10);
+          try {
+            await query("UPDATE admins SET password = ? WHERE id = ?", [
+              newHash,
+              user.id,
+            ]);
+          } catch (e) {
+            console.warn("Failed to upgrade plain-text password to hash:", e);
+          }
+          passwordMatch = true;
+        }
+      }
+
+      if (!passwordMatch) {
+        return res
+          .status(401)
+          .json({ success: false, message: "Invalid credentials" });
+      }
+
+      const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, {
+        expiresIn: "1h",
+      });
+      return res.status(200).json({
+        success: true,
+        token,
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+        },
+      });
+    } catch (err) {
+      console.error("Login-email error:", err);
+      return res.status(500).json({ success: false, message: "Server error" });
+    }
   }
 );
 
@@ -1937,6 +2111,49 @@ app.delete(
     }
   }
 );
+
+app.get("/api/regions", async (req, res) => {
+  try {
+    const rows =
+      await query(`select id, region, panchayatno, villageno, panchayat, village from regional_panchayats_villages
+    `);
+
+    const formatted: Record<
+      string,
+      { panchayat: string; villages: string[] }[]
+    > = {};
+
+    rows.forEach((row: any) => {
+      const block = String(row.region);
+      const panchayat = String(row.panchayat);
+      const village = String(row.village);
+
+      // Create block if not exists
+      if (!formatted[block]) {
+        formatted[block] = [];
+      }
+
+      // Check if panchayat already added
+      let panObj = formatted[block].find((p) => p.panchayat === panchayat);
+
+      // If not found, create new panchayat
+      if (!panObj) {
+        panObj = {
+          panchayat: panchayat,
+          villages: [],
+        };
+        formatted[block].push(panObj);
+      }
+
+      // Add village
+      panObj.villages.push(village);
+    });
+    return res.json({ status: true, data: formatted });
+  } catch (error) {
+    console.error("Error fetching regions:", error);
+    res.status(500).json({ status: false, error: "Server error" });
+  }
+});
 
 // Add this after all routes
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
