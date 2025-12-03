@@ -1226,19 +1226,10 @@ app.put(
 
 app.delete("/api/delete-member/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
-  const memberId = parseInt(id);
-
-  if (isNaN(memberId)) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Invalid member id" });
-  }
 
   try {
     // Fetch existing member first to delete the image file
-    const rows: any = await query("SELECT * FROM users WHERE id = ?", [
-      memberId,
-    ]);
+    const rows: any = await query("SELECT * FROM users WHERE id = ?", [id]);
     const member = rows[0];
     if (!member) {
       return res
@@ -1254,7 +1245,7 @@ app.delete("/api/delete-member/:id", async (req: Request, res: Response) => {
     //   });
     // }
     // Delete from DB
-    const result = await query("DELETE FROM users WHERE id = ?", [memberId]);
+    const result = await query("DELETE FROM users WHERE id = ?", [id]);
 
     if ((result as any).affectedRows === 0) {
       return res
