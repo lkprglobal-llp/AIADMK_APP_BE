@@ -827,7 +827,7 @@ app.get(
     if (res.headersSent) return;
     try {
       const rows = await query<RowDataPacket[]>(
-        "SELECT id, mobile, name, imageData, imageType, date_of_birth, parents_name, address, education_qualification, caste, DATE_FORMAT(joining_date, '%Y-%m-%d') as joining_date, joining_details, party_member_number, voter_id, aadhar_number, created_at, tname, dname, jname FROM users"
+        "SELECT id, mobile, name, imageData, imageType, date_of_birth, parents_name, address, education_qualification, caste, DATE_FORMAT(joining_date, '%Y-%m-%d') as joining_date, joining_details, party_member_number, voter_id, aadhar_number, created_at, tname, dname, jname FROM users ORDER BY created_at DESC"
       );
       const members = rows.map((row) => ({
         id: row.id,
