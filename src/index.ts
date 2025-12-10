@@ -827,7 +827,7 @@ app.get(
     if (res.headersSent) return;
     try {
       const rows = await query<RowDataPacket[]>(
-        "SELECT id, mobile, name, imageData, imageType, date_of_birth, parents_name, address, education_qualification, caste, DATE_FORMAT(joining_date, '%Y-%m-%d') as joining_date, joining_details, party_member_number, voter_id, aadhar_number, created_at, tname, dname, jname FROM users ORDER BY created_at DESC"
+        "SELECT id, mobile, name, imageData, imageType, date_of_birth, parents_name, address, education_qualification, caste, DATE_FORMAT(joining_date, '%Y-%m-%d') as joining_date, joining_details, party_member_number, voter_id, aadhar_number, created_at, tname, dname, jname, status FROM users ORDER BY created_at DESC"
       );
       const members = rows.map((row) => ({
         id: row.id,
@@ -850,6 +850,7 @@ app.get(
         jname: row.jname,
         tname: row.tname,
         dname: row.dname,
+        status: row.status,
       }));
       res.json({ success: true, members, count: members.length });
     } catch (error) {
@@ -945,6 +946,7 @@ app.post(
       dname,
       tname,
       jname,
+      status,
     } = req.body;
 
     const id = crypto.randomUUID();
@@ -968,7 +970,7 @@ app.post(
 
       // Insert member
       const result: any = await query(
-        `INSERT INTO users (id, mobile, name, imageData, imageType, date_of_birth, parents_name, address, education_qualification, caste, joining_date, joining_details, party_member_number, voter_id, aadhar_number, tname, dname, jname) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO users (id, mobile, name, imageData, imageType, date_of_birth, parents_name, address, education_qualification, caste, joining_date, joining_details, party_member_number, voter_id, aadhar_number, tname, dname, jname, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)`,
         [
           id,
           mobile || null,
@@ -988,6 +990,7 @@ app.post(
           tname || null,
           dname || null,
           jname || null,
+          status || "Active",
         ]
       );
 
@@ -1010,6 +1013,7 @@ app.post(
           tname,
           jname,
           parents_name,
+          status,
         },
         message: "Member Added successfully",
       });
@@ -1764,7 +1768,7 @@ app.get(
   async (req: Request, res: Response) => {
     try {
       const rows = await query(
-        "SELECT id, taskname, tunion, tpartyunion, tpanchayat, tvillage, year, fundname, boothno, status, created_at, updated_at FROM funds"
+        "SELECT id, taskname, tunion, tpartyunion, tpanchayat, tvillage, year, amount, imageData, imageType, fundname, boothno, status, created_at, updated_at FROM funds"
       );
       res.json({ success: true, funds: rows, count: rows.length });
     } catch (error) {
@@ -1799,12 +1803,23 @@ app.get(
     const { id } = req.params;
     try {
       const rows: any = await query("SELECT * FROM funds WHERE id = ?", [id]);
+
       if (rows.length === 0) {
         return res
           .status(404)
           .json({ success: false, message: "Fund not found" });
       }
-      res.json({ success: true, fund: rows[0] });
+
+      let fund = rows[0];
+
+      // Convert Buffer to Base64 if needed
+      if (fund.imageData) {
+        if (Buffer.isBuffer(fund.imageData)) {
+          fund.imageData = fund.imageData.toString("base64");
+        }
+      }
+
+      res.json({ success: true, fund });
     } catch (error) {
       console.error("Get fund error:", error);
       res.status(500).json({ success: false, message: "Server error" });
@@ -1870,10 +1885,19 @@ app.post(
       tvillage,
       year,
       fundname,
+      amount,
+      imageData,
+      imageType,
       boothno,
       status,
     } = req.body;
 
+    const rows: any = await query("SELECT * FROM funds");
+    if (!rows || rows.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Member not found" });
+    }
     // Validate required fields
     if (!taskname || !tunion || !fundname || boothno === undefined) {
       return res.status(400).json({
@@ -1884,8 +1908,8 @@ app.post(
 
     try {
       const result: any = await query(
-        `INSERT INTO funds (taskname, tunion, tpartyunion, tpanchayat, tvillage, year, fundname, boothno, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO funds (taskname, tunion, tpartyunion, tpanchayat, tvillage, year, amount, imageData, imageType, fundname, boothno, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           taskname,
           tunion,
@@ -1893,6 +1917,9 @@ app.post(
           tpanchayat || null,
           tvillage || null,
           year || null,
+          amount,
+          imageData,
+          imageType,
           fundname,
           boothno,
           status || "Active",
@@ -1909,6 +1936,9 @@ app.post(
           tpanchayat,
           tvillage,
           year,
+          amount,
+          imageData,
+          imageType,
           fundname,
           boothno,
           status: status || "Active",
