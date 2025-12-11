@@ -634,7 +634,7 @@ app.post(
       }
 
       const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, {
-        expiresIn: "1h",
+        expiresIn: "3d",
       });
       return res.status(200).json({
         success: true,
