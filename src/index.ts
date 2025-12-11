@@ -1,6 +1,7 @@
 import express, { NextFunction, Request, Response } from "express";
 // import { VercelRequest, VercelResponse } from "@vercel/node";
 // import { SpeedInsights } from "@vercel/speed-insights/next";
+import { injectSpeedInsights } from "@vercel/speed-insights/node";
 import mysql, { Connection, RowDataPacket } from "mysql2/promise";
 import axios from "axios";
 import cors from "cors";
@@ -64,6 +65,9 @@ const bcrypt = require("bcryptjs");
 const specs = swaggerJsdoc(options);
 const app = express();
 // const port = process.env.PORT || 5253; // Include the port variable in .env, if you need to run on the different port
+
+// Initialize Vercel Speed Insights
+injectSpeedInsights();
 
 app.use(
   cors({
