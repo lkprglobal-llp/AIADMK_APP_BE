@@ -73,16 +73,11 @@ app.use(
       "https://aiadmk.lkprglobal.com",
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    // credentials: true,
-    // exposedHeaders: ["Content-Disposition"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-// app.use(express.json({ limit: "100mb" })); // Increase JSON payload limit
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
-// app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-// app.use(body_parser.json({ limit: "100mb" })); // Increase body-parser limit
 
 //** OTP Store and Token generations */
 // JWT secret (store in environment variables in production)
@@ -253,10 +248,13 @@ const mobile_validate = (mobile: string): boolean => {
 
 // const eventUpload = multer({ storage: event_storage });
 // Multer setup - store in memory instead of file system
-const memberUpload = multer({ storage: multer.memoryStorage() });
+const memberUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 },
+});
 const eventUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 2 * 1024 * 1024 },
 });
 
 /* The `// Retry logic for API requests` section in the code is implementing a retry mechanism for
@@ -328,57 +326,51 @@ app.get("/", (req, res) => {
  *         description: Server error
  */
 
-app.post(
-  "/api/register",
-  express.json({ limit: "100mb" }),
-  body_parser.json({ limit: "100mb" }),
-  async (req, res) => {
-    const { username, mobile, email, password, role } = req.body;
-    const sanitizedMobile = sanitizePhoneNumber(mobile);
-    // Validate input
-    if (!mobile) {
-      return res.status(400).json({ error: "Mobile number is required" });
-    }
-    if (!mobile_validate(sanitizedMobile)) {
-      return res.status(400).json({ error: "Invalid mobile number format" });
-    }
-    if (!role) {
-      return res.status(400).json({ error: "Role is required" });
-    }
-
-    // Check for duplicate mobile
-    try {
-      const existingUser = await query(
-        "SELECT * FROM admins WHERE mobile = ?",
-        [sanitizedMobile]
-      );
-      if (existingUser.length > 0) {
-        return res.status(400).json({ error: "Mobile number already exists" });
-      }
-
-      const result: any = await query(
-        "INSERT INTO admins (username, email, password, mobile, role) VALUES (?, ?, ?, ?, ?)",
-        [username, email, password, sanitizedMobile, role]
-      );
-      const insertId = (result as any).insertId;
-      return res.status(201).json({
-        message: "Admin registered successfully",
-        id: insertId,
-        user: {
-          id: insertId,
-          username,
-          email,
-          password,
-          mobile: sanitizedMobile,
-          role,
-        },
-      });
-    } catch (error) {
-      console.error("Database error:", error);
-      return res.status(500).json({ error: "Server error" });
-    }
+app.post("/api/register", async (req, res) => {
+  const { username, mobile, email, password, role } = req.body;
+  const sanitizedMobile = sanitizePhoneNumber(mobile);
+  // Validate input
+  if (!mobile) {
+    return res.status(400).json({ error: "Mobile number is required" });
   }
-);
+  if (!mobile_validate(sanitizedMobile)) {
+    return res.status(400).json({ error: "Invalid mobile number format" });
+  }
+  if (!role) {
+    return res.status(400).json({ error: "Role is required" });
+  }
+
+  // Check for duplicate mobile
+  try {
+    const existingUser = await query("SELECT * FROM admins WHERE mobile = ?", [
+      sanitizedMobile,
+    ]);
+    if (existingUser.length > 0) {
+      return res.status(400).json({ error: "Mobile number already exists" });
+    }
+
+    const result: any = await query(
+      "INSERT INTO admins (username, email, password, mobile, role) VALUES (?, ?, ?, ?, ?)",
+      [username, email, password, sanitizedMobile, role]
+    );
+    const insertId = (result as any).insertId;
+    return res.status(201).json({
+      message: "Admin registered successfully",
+      id: insertId,
+      user: {
+        id: insertId,
+        username,
+        email,
+        password,
+        mobile: sanitizedMobile,
+        role,
+      },
+    });
+  } catch (error) {
+    console.error("Database error:", error);
+    return res.status(500).json({ error: "Server error" });
+  }
+});
 
 /**
  * @swagger
@@ -409,76 +401,70 @@ app.post(
  * The function handles user login by generating an OTP, validating the mobile number, and sending the
  * OTP via WhatsApp.
  */
-app.post(
-  "/api/Login",
-  express.json({ limit: "100mb" }),
-  body_parser.json({ limit: "100mb" }),
-  async (req, res) => {
-    const { mobile } = req.body;
-    const sanitizedMobile = sanitizePhoneNumber(mobile);
-    // Validate input
-    if (!mobile) {
-      return res.status(400).json({ error: "Mobile number is required" });
-    }
-    if (!mobile_validate(sanitizedMobile)) {
-      return res.status(400).json({ error: "Invalid mobile number format" });
-    }
-
-    const otp = generateOTP();
-    const expiry = new Date(Date.now() + 5 * 60 * 1000); // OTP valid for 5 minutes
-    const whatsappNumber = formatWhatsAppNumber(mobile);
-
-    try {
-      const isLogin: any = await query(
-        "SELECT * FROM admins WHERE mobile = ?",
-        [sanitizedMobile]
-      );
-      if (isLogin.length === 0) {
-        return res.status(404).json({ error: "Mobile number not found" });
-      }
-    } catch {
-      return res.status(500).json({ error: "Server error" });
-    }
-
-    // Function to send OTP via WhatsApp
-
-    try {
-      const response = await axios.post(whatsappUrl, {
-        to: whatsappNumber,
-        type: "template",
-        template: {
-          language: { policy: "deterministic", code: "en" },
-          name: "otp_copy",
-          components: [
-            { type: "body", parameters: [{ type: "text", text: otp }] },
-            {
-              type: "button",
-              sub_type: "url",
-              index: "0",
-              parameters: [{ type: "text", text: otp }],
-            },
-          ],
-        },
-      });
-    } catch (error) {
-      console.error("WhatsApp API error:", error);
-    }
-    // Store OTP and expiry in database
-
-    query("UPDATE admins SET otp = ?, otp_expiry = ? WHERE mobile = ?", [
-      otp,
-      expiry,
-      sanitizedMobile,
-    ]).then((result: any) => {
-      if (result.affectedRows === 0) {
-        return res.status(404).json({ error: "Mobile number not found" });
-      }
-      // Send OTP via WhatsApp
-
-      return res.status(200).json({ message: "OTP sent successfully" });
-    });
+app.post("/api/Login", async (req, res) => {
+  const { mobile } = req.body;
+  const sanitizedMobile = sanitizePhoneNumber(mobile);
+  // Validate input
+  if (!mobile) {
+    return res.status(400).json({ error: "Mobile number is required" });
   }
-);
+  if (!mobile_validate(sanitizedMobile)) {
+    return res.status(400).json({ error: "Invalid mobile number format" });
+  }
+
+  const otp = generateOTP();
+  const expiry = new Date(Date.now() + 5 * 60 * 1000); // OTP valid for 5 minutes
+  const whatsappNumber = formatWhatsAppNumber(mobile);
+
+  try {
+    const isLogin: any = await query("SELECT * FROM admins WHERE mobile = ?", [
+      sanitizedMobile,
+    ]);
+    if (isLogin.length === 0) {
+      return res.status(404).json({ error: "Mobile number not found" });
+    }
+  } catch {
+    return res.status(500).json({ error: "Server error" });
+  }
+
+  // Function to send OTP via WhatsApp
+
+  try {
+    const response = await axios.post(whatsappUrl, {
+      to: whatsappNumber,
+      type: "template",
+      template: {
+        language: { policy: "deterministic", code: "en" },
+        name: "otp_copy",
+        components: [
+          { type: "body", parameters: [{ type: "text", text: otp }] },
+          {
+            type: "button",
+            sub_type: "url",
+            index: "0",
+            parameters: [{ type: "text", text: otp }],
+          },
+        ],
+      },
+    });
+  } catch (error) {
+    console.error("WhatsApp API error:", error);
+  }
+  // Store OTP and expiry in database
+
+  query("UPDATE admins SET otp = ?, otp_expiry = ? WHERE mobile = ?", [
+    otp,
+    expiry,
+    sanitizedMobile,
+  ]).then((result: any) => {
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Mobile number not found" });
+    }
+    // Send OTP via WhatsApp
+
+    return res.status(200).json({ message: "OTP sent successfully" });
+  });
+});
 
 // // ----------------------------
 // // Email/password registration
@@ -580,78 +566,73 @@ app.post(
  *       200:
  *         description: Login successful
  */
-app.post(
-  "/api/login-email",
-  express.json({ limit: "100mb" }),
-  body_parser.json({ limit: "100mb" }),
-  async (req: Request, res: Response) => {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Email and password are required" });
-    }
-
-    try {
-      const rows: any = await query("SELECT * FROM admins WHERE email = ?", [
-        email,
-      ]);
-      if (!rows || rows.length === 0) {
-        return res
-          .status(404)
-          .json({ success: false, message: "User not found" });
-      }
-      const user = rows[0];
-
-      // Compare hashed password, or if legacy plain-text, accept and re-hash
-      let passwordMatch = false;
-      try {
-        passwordMatch = await bcrypt.compare(password, user.password || "");
-      } catch (e) {
-        passwordMatch = false;
-      }
-
-      if (!passwordMatch) {
-        // If stored as plain text (legacy), accept and re-hash
-        if (user.password === password) {
-          const newHash = await bcrypt.hash(password, 10);
-          try {
-            await query("UPDATE admins SET password = ? WHERE id = ?", [
-              newHash,
-              user.id,
-            ]);
-          } catch (e) {
-            console.warn("Failed to upgrade plain-text password to hash:", e);
-          }
-          passwordMatch = true;
-        }
-      }
-
-      if (!passwordMatch) {
-        return res
-          .status(401)
-          .json({ success: false, message: "Invalid credentials" });
-      }
-
-      const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, {
-        expiresIn: "3d",
-      });
-      return res.status(200).json({
-        success: true,
-        token,
-        user: {
-          id: user.id,
-          username: user.username,
-          email: user.email,
-          role: user.role,
-        },
-      });
-    } catch (err) {
-      console.error("Login-email error:", err);
-      return res.status(500).json({ success: false, message: "Server error" });
-    }
+app.post("/api/login-email", async (req: Request, res: Response) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Email and password are required" });
   }
-);
+
+  try {
+    const rows: any = await query("SELECT * FROM admins WHERE email = ?", [
+      email,
+    ]);
+    if (!rows || rows.length === 0) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
+    const user = rows[0];
+
+    // Compare hashed password, or if legacy plain-text, accept and re-hash
+    let passwordMatch = false;
+    try {
+      passwordMatch = await bcrypt.compare(password, user.password || "");
+    } catch (e) {
+      passwordMatch = false;
+    }
+
+    if (!passwordMatch) {
+      // If stored as plain text (legacy), accept and re-hash
+      if (user.password === password) {
+        const newHash = await bcrypt.hash(password, 10);
+        try {
+          await query("UPDATE admins SET password = ? WHERE id = ?", [
+            newHash,
+            user.id,
+          ]);
+        } catch (e) {
+          console.warn("Failed to upgrade plain-text password to hash:", e);
+        }
+        passwordMatch = true;
+      }
+    }
+
+    if (!passwordMatch) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid credentials" });
+    }
+
+    const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, {
+      expiresIn: "3d",
+    });
+    return res.status(200).json({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+      },
+    });
+  } catch (err) {
+    console.error("Login-email error:", err);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+});
 
 /**
  * @swagger
@@ -684,8 +665,6 @@ app.post(
 
 app.post(
   "/api/validate-otp",
-  express.json({ limit: "100mb" }),
-  body_parser.json({ limit: "100mb" }),
   async (req: Request, res: Response): Promise<void> => {
     if (res.headersSent) {
       console.log("Headers already sent in /api/validate-otp");
@@ -939,8 +918,6 @@ app.get(
 app.post(
   "/api/Register-Member/",
   memberUpload.single("image"),
-  express.json({ limit: "100mb" }),
-  body_parser.json({ limit: "100mb" }),
   async (req: Request, res: Response) => {
     const {
       mobile,
@@ -984,7 +961,7 @@ app.post(
 
       // Insert member
       const result: any = await query(
-        `INSERT INTO users (id, mobile, name_prefix, name, gender, imageData, imageType, date_of_birth, parents_name, address, education_qualification, caste, joining_date, joining_details, party_member_number, voter_id, aadhar_number, tname, dname, jname, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)`,
+        `INSERT INTO users (id, mobile, name_prefix, name, gender, imageData, imageType, date_of_birth, parents_name, address, education_qualification, caste, joining_date, joining_details, party_member_number, voter_id, aadhar_number, tname, dname, jname, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           mobile || null,
@@ -1168,8 +1145,8 @@ app.put(
          WHERE id = ?`,
         [
           mobile || null,
-          name || null,
           name_prefix || null,
+          name || null,
           gender || null,
           finalImage || null,
           finalImageType || null,
@@ -1897,8 +1874,6 @@ app.get(
 app.post(
   "/api/add-fund",
   authenticateToken,
-  express.json({ limit: "100mb" }),
-  body_parser.json({ limit: "100mb" }),
   async (req: Request, res: Response) => {
     const {
       taskname,
@@ -2023,8 +1998,6 @@ app.post(
 app.put(
   "/api/update-fund/:id",
   authenticateToken,
-  express.json({ limit: "100mb" }),
-  body_parser.json({ limit: "100mb" }),
   async (req: Request, res: Response) => {
     const { id } = req.params;
     const {
