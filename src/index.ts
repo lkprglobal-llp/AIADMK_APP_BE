@@ -62,6 +62,8 @@ const bcrypt = require("bcryptjs");
 
 const specs = swaggerJsdoc(options);
 const app = express();
+app.use(express.json());
+
 // const port = process.env.PORT || 5253; // Include the port variable in .env, if you need to run on the different port
 
 app.use(
@@ -211,43 +213,7 @@ const mobile_validate = (mobile: string): boolean => {
   return mobileRegex.test(mobile);
 };
 
-// // upload configuration
-// // Create uploads folder if not exists
-// const uploadDir = path.join(__dirname, "uploads/members");
-// if (!fs.existsSync(uploadDir)) {
-//   fs.mkdirSync(uploadDir, { recursive: true });
-// }
-
-// // Configure multer storage for members picture uploads
-// const member_storage = multer.diskStorage({
-//   destination: (req, file, cb) => cb(null, uploadDir),
-//   filename: (req, file, cb) => {
-//     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-//     cb(null, `${uniqueSuffix}${path.extname(file.originalname)}`);
-//   },
-// });
-
-// const memberUpload = multer({ storage: member_storage });
-
-// //configure multer storage for events image uploads
-// // Multer setup
-
-// const eventUploadDir = path.join(__dirname, "uploads/events");
-// if (!fs.existsSync(eventUploadDir)) {
-//   fs.mkdirSync(eventUploadDir, { recursive: true });
-// }
-// const event_storage = multer.diskStorage({
-//   destination: (req, file, cb) => {
-//     cb(null, eventUploadDir); // save in uploads/events
-//   },
-//   filename: (req, file, cb) => {
-//     const uniquename = Date.now() + "-" + Math.round(Math.random() * 1e9);
-//     cb(null, `${uniquename}${path.extname(file.originalname)}`);
-//   },
-// });
-
-// const eventUpload = multer({ storage: event_storage });
-// Multer setup - store in memory instead of file system
+//** Multer configuration for file uploads */
 const memberUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024 },
