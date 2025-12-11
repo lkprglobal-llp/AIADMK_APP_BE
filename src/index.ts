@@ -729,9 +729,20 @@ app.post(
       }
 
       // Generate JWT token
-      const token = jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, {
-        expiresIn: "1h",
-      });
+      const token = jwt.sign(
+        { id: user.id, role: user.role, name: user.name },
+        JWT_SECRET,
+        {
+          expiresIn: "3d",
+        },
+        function (e: any, token: any) {
+          if (e) {
+            console.log(e);
+          } else {
+            console.log(token);
+          }
+        }
+      );
 
       // Clear OTP and update is_verified
       await query(
