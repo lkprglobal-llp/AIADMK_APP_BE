@@ -837,11 +837,13 @@ app.get(
     if (res.headersSent) return;
     try {
       const rows = await query<RowDataPacket[]>(
-        "SELECT id, mobile, name, imageData, imageType, date_of_birth, parents_name, address, education_qualification, caste, DATE_FORMAT(joining_date, '%Y-%m-%d') as joining_date, joining_details, party_member_number, voter_id, aadhar_number, created_at, tname, dname, jname, status FROM users ORDER BY created_at DESC"
+        "SELECT id, mobile, name_prefix, name, gender, imageData, imageType, date_of_birth, parents_name, address, education_qualification, caste, DATE_FORMAT(joining_date, '%Y-%m-%d') as joining_date, joining_details, party_member_number, voter_id, aadhar_number, created_at, tname, dname, jname, status FROM users ORDER BY created_at DESC"
       );
       const members = rows.map((row) => ({
         id: row.id,
+        name_prefix: row.name_prefix,
         name: row.name,
+        gender: row.gender,
         imageData: row.imageData,
         imageType: row.imageType,
         date_of_birth: row.date_of_birth,
@@ -942,7 +944,9 @@ app.post(
   async (req: Request, res: Response) => {
     const {
       mobile,
+      name_prefix,
       name,
+      gender,
       date_of_birth,
       parents_name,
       address,
@@ -980,11 +984,13 @@ app.post(
 
       // Insert member
       const result: any = await query(
-        `INSERT INTO users (id, mobile, name, imageData, imageType, date_of_birth, parents_name, address, education_qualification, caste, joining_date, joining_details, party_member_number, voter_id, aadhar_number, tname, dname, jname, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)`,
+        `INSERT INTO users (id, mobile, name_prefix, name, gender, imageData, imageType, date_of_birth, parents_name, address, education_qualification, caste, joining_date, joining_details, party_member_number, voter_id, aadhar_number, tname, dname, jname, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)`,
         [
           id,
           mobile || null,
+          name_prefix || null,
           name || null,
+          gender || null,
           imageBuffer || null,
           imageType || null,
           date_of_birth || null,
@@ -1000,7 +1006,7 @@ app.post(
           tname || null,
           dname || null,
           jname || null,
-          status || "Active",
+          status || "செயல்பாட்டில் உள்ளார்",
         ]
       );
 
@@ -1015,6 +1021,7 @@ app.post(
         success: true,
         member: {
           id,
+          name_prefix,
           name,
           mobile,
           joining_date,
@@ -1113,7 +1120,9 @@ app.put(
   async (req: Request, res: Response) => {
     const {
       mobile,
+      name_prefix,
       name,
+      gender,
       date_of_birth,
       parents_name,
       address,
@@ -1152,7 +1161,7 @@ app.put(
       // Update member
       const result: any = await query(
         `UPDATE users 
-         SET mobile = ?, name = ?, imageData = ?, imageType = ?, date_of_birth = ?, parents_name = ?, address = ?, 
+         SET mobile = ?, name_prefix = ?, name = ?, gender = ?, imageData = ?, imageType = ?, date_of_birth = ?, parents_name = ?, address = ?, 
              education_qualification = ?, caste = ?, joining_date = ?, 
              joining_details = ?, party_member_number = ?, voter_id = ?, 
              aadhar_number = ?, tname = ?, dname = ?, jname = ? 
@@ -1160,6 +1169,8 @@ app.put(
         [
           mobile || null,
           name || null,
+          name_prefix || null,
+          gender || null,
           finalImage || null,
           finalImageType || null,
           date_of_birth || null,
@@ -1190,8 +1201,10 @@ app.put(
         message: "Member updated successfully",
         member: {
           id: parseInt(id),
+          name_prefix,
           name,
           mobile,
+          gender,
           date_of_birth,
           parents_name,
           address,
