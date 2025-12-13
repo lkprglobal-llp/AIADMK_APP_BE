@@ -1,5 +1,4 @@
 import express, { NextFunction, Request, Response } from "express";
-// import { VercelRequest, VercelResponse } from "@vercel/node";
 import mysql, { Connection, RowDataPacket } from "mysql2/promise";
 import axios from "axios";
 import cors from "cors";
@@ -7,7 +6,6 @@ import path from "path";
 import "dotenv/config";
 import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
-import fs, { access } from "fs";
 import multer from "multer";
 
 //** Swagger definition for API Calls*/
@@ -63,7 +61,6 @@ const bcrypt = require("bcryptjs");
 const specs = swaggerJsdoc(options);
 const app = express();
 app.use(express.json());
-
 // const port = process.env.PORT || 5253; // Include the port variable in .env, if you need to run on the different port
 
 app.use(
@@ -163,22 +160,56 @@ const pool = mysql.createPool({
   database: "u238482420_aiadmk",
   waitForConnections: true,
   connectionLimit: 10,
-  enableKeepAlive: true, // helps avoid idle timeout
-  queueLimit: 0,
+  queueLimit: 20,
+  enableKeepAlive: true,
   keepAliveInitialDelay: 0,
+  connectTimeout: 10000, // 10 second timeout
+  idleTimeout: 900000, // 15 minutes
+});
+
+// Handle pool errors
+(pool as any).on("error", (err: any) => {
+  console.error("MySQL pool error:", err);
+  if (err.code === "PROTOCOL_CONNECTION_LOST") {
+    console.error("Database connection was closed.");
+  }
+  if (err.code === "PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR") {
+    console.error("Database connection had a fatal error.");
+  }
+  if (err.code === "PROTOCOL_ENQUEUE_AFTER_CLOSE") {
+    console.error("Database connection was closed.");
+  }
 });
 
 // Initialized database connection
 
 async function query<T = RowDataPacket[]>(
   sql: string,
-  params?: any[]
+  params?: any[],
+  retries: number = 3
 ): Promise<T> {
   try {
     const [rows] = await pool.query<T & RowDataPacket[]>(sql, params); // returns rows only
     return rows;
-  } catch (err) {
+  } catch (err: any) {
     console.error("DB query error:", err);
+
+    // Retry logic for connection-related errors
+    if (
+      retries > 0 &&
+      (err.code === "ECONNRESET" ||
+        err.code === "ECONNREFUSED" ||
+        err.code === "PROTOCOL_CONNECTION_LOST" ||
+        err.code === "PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR")
+    ) {
+      console.log(`Query failed, retrying... (${retries} attempts left)`);
+      // Wait before retrying
+      await new Promise((resolve) =>
+        setTimeout(resolve, 500 + Math.random() * 1000)
+      );
+      return query(sql, params, retries - 1);
+    }
+
     throw err;
   }
 }
@@ -901,6 +932,7 @@ app.post(
       voter_id,
       aadhar_number,
       dname,
+      cname,
       tname,
       jname,
       status,
@@ -927,7 +959,7 @@ app.post(
 
       // Insert member
       const result: any = await query(
-        `INSERT INTO users (id, mobile, name_prefix, name, gender, imageData, imageType, date_of_birth, parents_name, address, education_qualification, caste, joining_date, joining_details, party_member_number, voter_id, aadhar_number, tname, dname, jname, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO users (id, mobile, name_prefix, name, gender, imageData, imageType, date_of_birth, parents_name, address, education_qualification, caste, joining_date, joining_details, party_member_number, voter_id, aadhar_number, tname, cname, dname, jname, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           mobile || null,
@@ -947,6 +979,7 @@ app.post(
           voter_id || null,
           aadhar_number || null,
           tname || null,
+          cname || null,
           dname || null,
           jname || null,
           status || "செயல்பாட்டில் உள்ளார்",
@@ -969,6 +1002,7 @@ app.post(
           mobile,
           joining_date,
           party_member_number,
+          cname,
           dname,
           tname,
           jname,
@@ -1254,7 +1288,7 @@ app.get(
     }
     try {
       const results = await query(
-        "SELECT DISTINCT tcode, dcode, jcode, tname, dname, jname FROM teams"
+        "SELECT DISTINCT tcode, ccode, dcode, jcode, tname, cname, dname, jname FROM teams"
       );
       const positions = results as TeamRow[];
       res.json({ success: true, positions });
