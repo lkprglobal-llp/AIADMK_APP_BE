@@ -813,7 +813,7 @@ app.get(
     if (res.headersSent) return;
     try {
       const rows = await query<RowDataPacket[]>(
-        "SELECT id, mobile, name_prefix, name, gender, imageData, imageType, date_of_birth, parents_name, address, education_qualification, caste, DATE_FORMAT(joining_date, '%Y-%m-%d') as joining_date, joining_details, party_member_number, voter_id, aadhar_number, created_at, tname, dname, jname, status FROM users ORDER BY created_at DESC"
+        "SELECT id, mobile, name_prefix, name, gender, imageData, imageType, date_of_birth, parents_name, address, education_qualification, caste, DATE_FORMAT(joining_date, '%d-%m-%Y') as joining_date, joining_details, party_member_number, voter_id, aadhar_number, tname, cname, dname, jname, status FROM users ORDER BY created_at DESC"
       );
       const members = rows.map((row) => ({
         id: row.id,
@@ -833,11 +833,10 @@ app.get(
         joining_details: row.joining_details,
         voter_id: row.voter_id,
         aadhar_number: row.aadhar_number,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-        jname: row.jname,
         tname: row.tname,
+        cname: row.cname,
         dname: row.dname,
+        jname: row.jname,
         status: row.status,
       }));
       res.json({ success: true, members, count: members.length });
@@ -947,7 +946,7 @@ app.post(
 
     try {
       // 1. Get current member
-      const rows: any = await query("SELECT * FROM users WHERE mobile = ?", [
+      const rows: any = await query("SELECT name FROM users WHERE mobile = ?", [
         mobile,
       ]);
 
@@ -1111,6 +1110,7 @@ app.put(
       voter_id,
       aadhar_number,
       dname,
+      cname,
       tname,
       jname,
     } = req.body;
@@ -1121,7 +1121,10 @@ app.put(
 
     try {
       // Get current member
-      const rows: any = await query("SELECT * FROM users WHERE id = ?", [id]);
+      const rows: any = await query(
+        "SELECT name, mobile FROM users WHERE id = ?",
+        [id]
+      );
       if (!rows || rows.length === 0) {
         return res
           .status(404)
@@ -1141,7 +1144,7 @@ app.put(
          SET mobile = ?, name_prefix = ?, name = ?, gender = ?, imageData = ?, imageType = ?, date_of_birth = ?, parents_name = ?, address = ?, 
              education_qualification = ?, caste = ?, joining_date = ?, 
              joining_details = ?, party_member_number = ?, voter_id = ?, 
-             aadhar_number = ?, tname = ?, dname = ?, jname = ? 
+             aadhar_number = ?, tname = ?, cname = ?, dname = ?, jname = ? 
          WHERE id = ?`,
         [
           mobile || null,
@@ -1161,6 +1164,7 @@ app.put(
           voter_id || null,
           aadhar_number || null,
           tname || null,
+          cname || null,
           dname || null,
           jname || null,
           id,
@@ -1193,6 +1197,7 @@ app.put(
           voter_id,
           aadhar_number,
           dname,
+          cname,
           tname,
           jname,
         },
@@ -1232,22 +1237,6 @@ app.delete("/api/delete-member/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
 
   try {
-    // Fetch existing member first to delete the image file
-    const rows: any = await query("SELECT * FROM users WHERE id = ?", [id]);
-    const member = rows[0];
-    if (!member) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Member not found" });
-    }
-
-    // // Delete image file from disk
-    // if (member.image) {
-    //   const imagePath = path.join(__dirname, "../src/", member.image); // adjust path
-    //   fs.unlink(imagePath, (err) => {
-    //     if (err) console.warn("Failed to delete image file:", err);
-    //   });
-    // }
     // Delete from DB
     const result = await query("DELETE FROM users WHERE id = ?", [id]);
 
