@@ -1,5 +1,5 @@
 import express, { NextFunction, Request, Response } from "express";
-import mysql, { Connection, RowDataPacket } from "mysql2/promise";
+import mysql, { RowDataPacket, ResultSetHeader } from "mysql2/promise";
 import axios from "axios";
 import cors from "cors";
 import path from "path";
@@ -7,6 +7,11 @@ import "dotenv/config";
 import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
 import multer from "multer";
+import XLSX from "xlsx";
+import ExcelJS from "exceljs";
+import PDFDocument, { fillColor } from "pdfkit";
+import dayjs from "dayjs";
+import { Buffer } from "buffer";
 
 //** Swagger definition for API Calls*/
 const options = {
@@ -55,7 +60,6 @@ const options = {
 };
 
 const jwt = require("jsonwebtoken");
-const body_parser = require("body-parser");
 const bcrypt = require("bcryptjs");
 
 const specs = swaggerJsdoc(options);
@@ -90,6 +94,24 @@ interface TeamRow extends RowDataPacket {
   tname?: string | null;
   dname?: string | null;
   jname?: string | null; // Aliased jname
+}
+
+interface ImportBoothRow {
+  id?: number;
+  constituency_id: number;
+  booth_no: number;
+  village_name: string;
+  year: number;
+  polling_percentage: number;
+  party_percentage: number;
+}
+
+interface YearRow extends RowDataPacket {
+  id: number;
+}
+
+interface BoothRow extends RowDataPacket {
+  id: number;
 }
 
 // Interface for JWT payload
@@ -252,6 +274,16 @@ const memberUpload = multer({
 const eventUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 2 * 1024 * 1024 },
+});
+
+const excelupload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
 });
 
 /* The `// Retry logic for API requests` section in the code is implementing a retry mechanism for
@@ -1757,7 +1789,7 @@ app.get(
   async (req: Request, res: Response) => {
     try {
       const rows = await query(
-        "SELECT id, taskname, tunion, tpartyunion, tpanchayat, tvillage, year, amount, imageData, imageType, fundname, boothno, status, created_at, updated_at FROM funds"
+        "SELECT id, taskname, tunion, tpartyunion, tpanchayat, tvillage, year, amount, imageData, imageType, fundname, boothno, status, created_at, updated_at FROM funds ORDER BY created_at DESC"
       );
       res.json({ success: true, funds: rows, count: rows.length });
     } catch (error) {
@@ -2161,12 +2193,467 @@ app.get("/api/regions", async (req, res) => {
   }
 });
 
-// Add this after all routes
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-  if (res.headersSent) return next(); // Skip if response already sent
-  console.error("Global error:", err);
-  res.status(500).json({ success: false, message: "Internal server error" });
+//MLA Election Years and Constituencies APIs
+app.get("/api/years", async (_, res) => {
+  const [rows] = await pool.query("SELECT * FROM election_years ORDER BY year");
+  res.json(rows);
 });
+
+app.post("/api/addyears", authenticateToken, async (req, res) => {
+  const { year } = req.body;
+  await pool.query("INSERT INTO election_years (year) VALUES (?)", [year]);
+  res.json({ success: true });
+});
+
+app.put("/api/updateyear/:id", authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { year } = req.body;
+  await pool.query("UPDATE election_years SET year=?, WHERE id=?", [year, id]);
+  res.json({ success: true });
+});
+
+app.delete("/api/deleteyear/:id", authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  await pool.query("DELETE FROM election_years WHERE id=?", [id]);
+  res.json({ success: true });
+});
+
+app.get("/api/constituencies", async (_, res) => {
+  const [rows] = await pool.query("SELECT * FROM constituencies");
+  res.json(rows);
+});
+
+app.post("/api/addconstituencies", authenticateToken, async (req, res) => {
+  const { constituency_no, constituency_code, constituency_name } = req.body;
+  await pool.query(
+    `INSERT INTO constituencies
+     (constituency_no, constituency_code, constituency_name)
+     VALUES (?,?,?)`,
+    [constituency_no, constituency_code, constituency_name]
+  );
+  res.json({ success: true });
+});
+
+app.put("/api/updateconstituency/:id", authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { constituency_no, constituency_code, constituency_name } = req.body;
+  await pool.query(
+    `UPDATE constituencies 
+     SET constituency_no=?, constituency_code=?, constituency_name=?
+      WHERE id=?`,
+    [constituency_no, constituency_code, constituency_name, id]
+  );
+  res.json({ success: true });
+});
+
+app.delete(
+  "/api/deleteconstituency/:id",
+  authenticateToken,
+  async (req, res) => {
+    const { id } = req.params;
+    await pool.query("DELETE FROM constituencies WHERE id=?", [id]);
+    res.json({ success: true });
+  }
+);
+
+app.get("/api/booths/:constituencyId", async (req, res) => {
+  const [rows] = await pool.query(
+    "SELECT * FROM booths WHERE constituency_id = ?",
+    [req.params.constituencyId]
+  );
+  res.json(rows);
+});
+
+app.post("/api/booths", authenticateToken, async (req, res) => {
+  const { constituency_id, booth_no, village_name } = req.body;
+  await pool.query(
+    "INSERT INTO booths (constituency_id, booth_no, village_name) VALUES (?,?,?)",
+    [constituency_id, booth_no, village_name]
+  );
+  res.json({ success: true });
+});
+
+app.put("/constituency", authenticateToken, async (req, res) => {
+  const { constituency_id, year_id, polling, party } = req.body;
+
+  await pool.query(
+    `INSERT INTO election_results
+     (constituency_id, year_id, polling_percentage, party_percentage)
+     VALUES (?,?,?,?)
+     ON DUPLICATE KEY UPDATE
+     polling_percentage = VALUES(polling_percentage),
+     party_percentage = VALUES(party_percentage)`,
+    [constituency_id, year_id, polling, party]
+  );
+
+  res.json({ success: true });
+});
+
+app.put("/booth", authenticateToken, async (req, res) => {
+  const { booth_id, year_id, polling, party } = req.body;
+
+  await pool.query(
+    `INSERT INTO booth_results
+     (booth_id, year_id, polling_percentage, party_percentage)
+     VALUES (?,?,?,?)
+     ON DUPLICATE KEY UPDATE
+     polling_percentage = VALUES(polling_percentage),
+     party_percentage = VALUES(party_percentage)`,
+    [booth_id, year_id, polling, party]
+  );
+
+  res.json({ success: true });
+});
+
+//import export preview
+
+app.post("/preview", excelupload.single("file"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({
+      message: "File is required",
+    });
+  }
+
+  const workbook = XLSX.read(req.file.buffer, {
+    type: "buffer",
+  });
+
+  const sheetName = workbook.SheetNames[0];
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+    defval: null,
+  });
+
+  res.json({
+    totalRows: rows.length,
+    rows,
+  });
+});
+
+app.post("/commit", excelupload.single("file"), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: "File is required" });
+  }
+
+  const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+
+  const rows = XLSX.utils.sheet_to_json<ImportBoothRow>(
+    workbook.Sheets[workbook.SheetNames[0]],
+    { defval: null }
+  );
+
+  const conn = await pool.getConnection();
+  await conn.beginTransaction();
+
+  try {
+    for (const row of rows) {
+      if (
+        typeof row.constituency_id !== "number" ||
+        typeof row.booth_no !== "number" ||
+        typeof row.year !== "number"
+      ) {
+        continue;
+      }
+
+      /* ---------- 1. Get year_id ---------- */
+      const [yearRows] = await conn.query<YearRow[]>(
+        "SELECT id FROM election_years WHERE year = ?",
+        [row.year]
+      );
+
+      if (!yearRows.length) continue;
+      const yearId = yearRows[0].id;
+
+      /* ---------- 2. Get or create booth ---------- */
+      const [boothRows] = await conn.query<BoothRow[]>(
+        `SELECT id FROM booths 
+           WHERE constituency_id = ? AND booth_no = ?`,
+        [row.constituency_id, row.booth_no]
+      );
+
+      let boothId: number;
+
+      if (boothRows.length) {
+        boothId = boothRows[0].id;
+      } else {
+        const [insertResult] = await conn.query<ResultSetHeader>(
+          `INSERT INTO booths
+             (constituency_id, booth_no, village_name)
+             VALUES (?,?,?)`,
+          [row.constituency_id, row.booth_no, row.village_name]
+        );
+
+        boothId = insertResult.insertId;
+      }
+
+      /* ---------- 3. Upsert booth results ---------- */
+      await conn.query(
+        `INSERT INTO booth_results
+           (booth_id, year_id, polling_percentage, party_percentage)
+           VALUES (?,?,?,?)
+           ON DUPLICATE KEY UPDATE
+           polling_percentage = VALUES(polling_percentage),
+           party_percentage = VALUES(party_percentage)`,
+        [boothId, yearId, row.polling_percentage, row.party_percentage]
+      );
+    }
+
+    await conn.commit();
+    res.json({ success: true });
+  } catch (err: any) {
+    await conn.rollback();
+    res.status(500).json({
+      message: "Import failed",
+      error: err.message,
+    });
+  } finally {
+    conn.release();
+  }
+});
+
+/* ----------------------------------------------------
+   GET EVENTS (DATE RANGE — USED BY FULLCALENDAR)
+---------------------------------------------------- */
+app.get("/api/mlacalender", async (req, res) => {
+  try {
+    const { start } = req.query;
+
+    const [rows] = await pool.query(
+      `
+      SELECT 
+        id,
+        title,
+        description,
+        start_datetime as start, 
+        end_datetime as end,
+        color_code AS color
+      FROM mla_calender
+      ORDER BY start_datetime
+      `,
+      [start]
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to fetch events" });
+  }
+});
+
+/* ----------------------------------------------------
+   SEARCH EVENTS (TITLE BASED — SERVER SIDE)
+---------------------------------------------------- */
+app.get("/api/mlacalender/search", async (req, res) => {
+  try {
+    const { title } = req.query;
+
+    const [rows] = await pool.query(
+      `
+      SELECT 
+        id,
+        title,
+        description,
+        start_datetime as start, 
+        end_datetime as end,
+        color_code AS color
+      FROM mla_calender
+      WHERE title LIKE ?
+      ORDER BY start_datetime
+      `,
+      [`%${title}%`]
+    );
+
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Search failed" });
+  }
+});
+
+/* ----------------------------------------------------
+   CREATE EVENT
+---------------------------------------------------- */
+app.post("/api/addmlacalender", async (req, res) => {
+  try {
+    const { title, description, start, end, color } = req.body;
+
+    await pool.query(
+      `
+      INSERT INTO mla_calender 
+      (title, description, start_datetime, end_datetime, color_code)
+      VALUES (?, ?, ?, ?, ?)
+      `,
+      [title, description, start, end, color]
+    );
+
+    res.status(201).json({ message: "Event created" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Create failed" });
+  }
+});
+
+/* ----------------------------------------------------
+   UPDATE EVENT
+---------------------------------------------------- */
+app.put("/api/updatemlacalender/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, description, start, end, color } = req.body;
+
+    await pool.query(
+      `
+      UPDATE mla_calender
+      SET 
+        title = ?,
+        description = ?,
+        start_datetime = ?,
+        end_datetime = ?,
+        color_code = ?
+      WHERE id = ?
+      `,
+      [title, description, start, end, color, id]
+    );
+
+    res.json({ message: "calender updated" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Update failed" });
+  }
+});
+
+/* ----------------------------------------------------
+   DELETE EVENT
+---------------------------------------------------- */
+app.delete("/api/deletemlacalender/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await pool.query(`DELETE FROM mla_calender WHERE id = ?`, [id]);
+
+    res.json({ message: "Event deleted" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Delete failed" });
+  }
+});
+
+app.get("/api/export/pdf", async (_req: Request, res: Response) => {
+  try {
+    const [rows]: any = await pool.query(
+      "SELECT title, description, DATE_FORMAT(start_datetime, '%d-%m-%Y') as start_datetime, DATE_FORMAT(end_datetime, '%d-%m-%Y') as end_datetime, color_code FROM mla_calender ORDER BY start_datetime ASC"
+    );
+
+    const doc = new PDFDocument({ margin: 30, size: "A4" });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=mla-calendar.pdf"
+    );
+
+    doc.pipe(res);
+
+    doc.fontSize(18).text("MLA Calendar Events", { align: "center" });
+    doc.moveDown();
+
+    rows.forEach((e: any, index: number) => {
+      doc
+        .fontSize(10)
+        .text(
+          `${index + 1}. ${e.title}
+Start: ${dayjs(e.start).format("DD MMM YYYY HH:mm")}
+End: ${dayjs(e.end).format("DD MMM YYYY HH:mm")}`
+        )
+        .moveDown(0.5);
+    });
+
+    doc.end();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "PDF export failed" });
+  }
+});
+
+app.get("/api/export/excel", async (_req: Request, res: Response) => {
+  try {
+    const [rows]: any = await pool.query(
+      "SELECT title, description,DATE_FORMAT(start_datetime, '%d-%m-%Y') as start_datetime, DATE_FORMAT(end_datetime, '%d-%m-%Y') as end_datetime, color_code FROM mla_calender ORDER BY start_datetime ASC"
+    );
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Calendar Events");
+
+    sheet.columns = [
+      { header: "Title", key: "title", width: 30 },
+      { header: "Start", key: "start_datetime", width: 25 },
+      { header: "End", key: "end_datetime", width: 25 },
+      { header: "Color", key: "color_code", width: 15 },
+    ];
+
+    rows.forEach((row: any) => sheet.addRow(row));
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=mla-calendar-events.xlsx"
+    );
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Excel export failed" });
+  }
+});
+
+app.post(
+  "/import/excel",
+  upload.single("file"),
+  async (req: Request, res: Response) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "Excel file required" });
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      const buffer = Buffer.from(req.file.buffer);
+      await workbook.xlsx.load(buffer as any);
+
+      const sheet = workbook.worksheets[0];
+      const rows: any[] = [];
+
+      sheet.eachRow((row, rowIndex) => {
+        if (rowIndex === 1) return;
+
+        rows.push([
+          row.getCell(1).value,
+          dayjs(row.getCell(2).value as any).toDate(),
+          dayjs(row.getCell(3).value as any).toDate(),
+          row.getCell(4).value || "#2563eb",
+        ]);
+      });
+
+      const [result]: any = await pool.query(
+        `INSERT IGNORE INTO mla_calendar_events
+         (title, DATE_FORMAT(start_datetime, '%d-%m-%Y') as start_datetime, DATE_FORMAT(end_datetime, '%d-%m-%Y') as end_datetime, color_code)
+         VALUES ?`,
+        [rows]
+      );
+
+      res.json({
+        success: true,
+        inserted: result.affectedRows,
+        skipped: rows.length - result.affectedRows,
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Import failed" });
+    }
+  }
+);
 
 // // Serve static files from the Vite build
 // app.use(express.static(path.join(__dirname, "dist")));
