@@ -2655,6 +2655,38 @@ app.post(
   }
 );
 
+app.get("/api/booth-data", async (req, res) => {
+  const [rows] = await pool.query(
+    "SELECT id, boothNumber, data FROM booth_data"
+  );
+  // Type assert rows
+  const booths = (rows as any[]).map((row) => ({
+    id: row.id,
+    boothNumber: row.boothNumber,
+    ...JSON.parse(row.data), // Parse JSON string
+  }));
+  res.json(booths);
+});
+
+app.put("/api/booth-data/:id", async (req, res) => {
+  const { id } = req.params;
+  const { boothNumber, stationNames, pollingPct, partyVotes } = req.body;
+  const data = JSON.stringify({ stationNames, pollingPct, partyVotes });
+
+  await pool.query(
+    "INSERT INTO booth_data (id, boothNumber, data) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE boothNumber = ?, data = ?",
+    [id, boothNumber, data, boothNumber, data]
+  );
+
+  res.json({ id, boothNumber, ...JSON.parse(data) });
+});
+
+// Backend route (Express/MySQL example)
+app.delete("/api/booth-data/:id", async (req, res) => {
+  const { id } = req.params;
+  await pool.query("DELETE FROM booth_data WHERE id = ?", [id]);
+  res.status(204).send();
+});
 // // Serve static files from the Vite build
 // app.use(express.static(path.join(__dirname, "dist")));
 
