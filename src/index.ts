@@ -2627,21 +2627,41 @@ app.delete("/api/elections/:id", async (req, res) => {
 
 // ==================== BOOTH ROUTES ====================
 
-app.get("/api/booths", async (req, res) => {
-  console.log("GET /api/booths called with query:", req.query);
+// Test endpoint to check database data
+app.get("/api/test/booths", async (req, res) => {
   try {
+    const [count] = await pool.query("SELECT COUNT(*) as total FROM booths");
+    const [sample] = await pool.query("SELECT * FROM booths LIMIT 3");
+    const [elections] = await pool.query(
+      "SELECT COUNT(*) as total FROM elections"
+    );
+
+    res.json({
+      booth_count: (count as any)[0].total,
+      election_count: (elections as any)[0].total,
+      sample_booths: sample,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/booths", async (req, res) => {
+  try {
+    console.log("GET /api/booths called with query:", req.query);
+
+    // Simple query first to test data exists
+    const [testRows] = await pool.query("SELECT COUNT(*) as count FROM booths");
+    console.log("Total booths in database:", (testRows as any)[0].count);
+
     const election_id = req.query.election_id as string | undefined;
     const location = req.query.location as string | undefined;
-
-    // const page = parseInt(req.query.page as string) || 1;
-    // const limit = parseInt(req.query.limit as string) || 50;
-
-    // const offset = (page - 1) * limit;
     const page = qInt(req.query.page, 1, 1, 10000);
     const limit = qInt(req.query.limit, 50, 1, 100);
     const offset = (page - 1) * limit;
 
-    let query = "SELECT * FROM v_booth_summary WHERE 1=1";
+    let query = "SELECT * FROM booths WHERE 1=1";
     const params: any[] = [];
 
     if (election_id) {
@@ -2657,12 +2677,10 @@ app.get("/api/booths", async (req, res) => {
     query += " ORDER BY booth_number_start LIMIT ? OFFSET ?";
     params.push(limit, offset);
 
-    console.log("Executing query:", query, params);
+    console.log("Executing query:", query, "with params:", params);
     const [rows] = await pool.query(query, params);
-    console.log(
-      "Query successful, rows:",
-      Array.isArray(rows) ? rows.length : "not array"
-    );
+    console.log("Query result count:", (rows as any[]).length);
+
     res.json(rows);
   } catch (error: any) {
     console.error("GET /api/booths error:", error);
@@ -2672,12 +2690,19 @@ app.get("/api/booths", async (req, res) => {
 
 app.get("/api/booths/:id", async (req, res) => {
   try {
+    const { id } = req.params;
+
     const [booth] = await pool.query<any[]>(
       "SELECT * FROM booths WHERE id = ?",
-      [req.params.id]
+      [id]
     );
-    if (booth.length === 0)
-      return res.status(404).json({ error: "Booth not found" });
+
+    if (booth.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Booth not found",
+      });
+    }
 
     const [results] = await pool.query(
       `SELECT 
@@ -2699,7 +2724,7 @@ app.get("/api/booths/:id", async (req, res) => {
        JOIN parties p ON br.party_id = p.id 
        WHERE br.booth_id = ?
        ORDER BY br.votes DESC`,
-      [booth[0].total_voters, req.params.id, req.params.id, req.params.id]
+      [booth[0].total_voters, id, id, id]
     );
 
     // Calculate total votes cast and turnout
@@ -2714,17 +2739,20 @@ app.get("/api/booths/:id", async (req, res) => {
         : 0;
 
     res.json({
-      ...booth[0],
-      results,
-      summary: {
-        total_votes_cast: totalVotesCast,
-        turnout_percentage: turnoutPercentage,
-        parties_contested: (results as any[]).length,
+      success: true,
+      data: {
+        ...booth[0],
+        results,
+        summary: {
+          total_votes_cast: totalVotesCast,
+          turnout_percentage: turnoutPercentage,
+          parties_contested: (results as any[]).length,
+        },
       },
     });
   } catch (error: any) {
     console.error("Get booth error:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -2741,6 +2769,23 @@ app.post("/api/booths", async (req, res) => {
       transgender_voters,
       total_voters,
     } = req.body;
+
+    // Validate required fields BEFORE database operation
+    const required = [
+      "election_id",
+      "booth_name",
+      "booth_number_start",
+      "location",
+    ];
+    for (const field of required) {
+      if (!req.body[field]) {
+        return res.status(400).json({
+          success: false,
+          error: `${field} is required`,
+        });
+      }
+    }
+
     const id = crypto.randomUUID();
     await pool.query(
       `INSERT INTO booths (id, election_id, booth_name, booth_number_start, booth_number_end, location, male_voters, female_voters, transgender_voters, total_voters) 
@@ -2748,43 +2793,32 @@ app.post("/api/booths", async (req, res) => {
       [
         id,
         election_id,
-        booth_name || null,
-        booth_number_start || null,
+        booth_name,
+        booth_number_start,
         booth_number_end || null,
-        location || null,
+        location,
         male_voters || 0,
         female_voters || 0,
         transgender_voters || 0,
         total_voters || 0,
       ]
     );
+
     const [rows] = await pool.query<any[]>(
       "SELECT * FROM booths WHERE id = ?",
       [id]
     );
-    const required = [
-      "election_id",
-      "booth_name",
-      "booth_number_start",
-      "booth_number_end",
-      "location",
-    ];
-    for (const field of required) {
-      if (!req.body[field]) {
-        return res
-          .status(400)
-          .json({ success: false, message: "All fields are required" });
-      }
-    }
-    console.log(rows);
-    res.status(201).json(rows[0]);
+
+    res.status(201).json({ success: true, data: rows[0] });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    console.error("Create booth error:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 app.put("/api/booths/:id", async (req, res) => {
   try {
+    const { id } = req.params;
     const {
       booth_name,
       booth_number_start,
@@ -2795,36 +2829,84 @@ app.put("/api/booths/:id", async (req, res) => {
       transgender_voters,
       total_voters,
     } = req.body;
-    await pool.query(
+
+    // Check if booth exists
+    const [existing] = await pool.query<any[]>(
+      "SELECT id FROM booths WHERE id = ?",
+      [id]
+    );
+
+    if (existing.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Booth not found",
+      });
+    }
+
+    const [result] = await pool.query(
       `UPDATE booths SET booth_name = ?, booth_number_start = ?, booth_number_end = ?, location = ?, male_voters = ?, female_voters = ?, transgender_voters = ?, total_voters = ? WHERE id = ?`,
       [
         booth_name,
         booth_number_start,
         booth_number_end,
         location,
-        male_voters,
-        female_voters,
-        transgender_voters,
-        total_voters,
-        req.params.id,
+        male_voters || 0,
+        female_voters || 0,
+        transgender_voters || 0,
+        total_voters || 0,
+        id,
       ]
     );
+
+    if ((result as any).affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Update failed",
+      });
+    }
+
     const [rows] = await pool.query<any[]>(
       "SELECT * FROM booths WHERE id = ?",
-      [req.params.id]
+      [id]
     );
-    res.json(rows[0]);
+
+    res.json({ success: true, data: rows[0] });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    console.error("Update booth error:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
 app.delete("/api/booths/:id", async (req, res) => {
   try {
-    await pool.query("DELETE FROM booths WHERE id = ?", [req.params.id]);
-    res.json({ success: true });
+    const { id } = req.params;
+
+    // Check if booth exists
+    const [existing] = await pool.query<any[]>(
+      "SELECT id FROM booths WHERE id = ?",
+      [id]
+    );
+
+    if (existing.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Booth not found",
+      });
+    }
+
+    const [result] = await pool.query("DELETE FROM booths WHERE id = ?", [id]);
+
+    if ((result as any).affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Delete failed",
+      });
+    }
+
+    res.json({ success: true, message: "Booth deleted successfully" });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    console.error("Delete booth error:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -2936,12 +3018,11 @@ app.post("/api/booth_results", async (req, res) => {
 
     const id = crypto.randomUUID();
     await pool.query(
-      `INSERT INTO booth_results (id, booth_id, party_id, votes) VALUES (?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE votes = VALUES(votes)`,
+      `INSERT INTO booth_results (id, booth_id, party_id, votes) VALUES (?, ?, ?, ?)`,
       [id, booth_id, party_id, votes]
     );
 
-    // Return updated result with percentages
+    // Return created result with percentages
     const [result] = await pool.query(
       `
       SELECT 
@@ -2960,17 +3041,73 @@ app.post("/api/booth_results", async (req, res) => {
       FROM booth_results br
       JOIN parties p ON br.party_id = p.id
       JOIN booths b ON br.booth_id = b.id
-      WHERE br.booth_id = ? AND br.party_id = ?
+      WHERE br.id = ?
     `,
-      [booth_id, party_id]
+      [id]
     );
 
     res.status(201).json({
       success: true,
-      data: result || { booth_id, party_id, votes },
+      data: (result as any[])[0] || { id, booth_id, party_id, votes },
     });
   } catch (error: any) {
     console.error("Create booth result error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/booth_results/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { votes } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ error: "ID is required" });
+    }
+
+    if (votes === undefined) {
+      return res.status(400).json({ error: "votes is required" });
+    }
+
+    const [result] = await pool.query(
+      "UPDATE booth_results SET votes = ? WHERE id = ?",
+      [votes, id]
+    );
+
+    if ((result as any).affectedRows === 0) {
+      return res.status(404).json({ error: "Booth result not found" });
+    }
+
+    // Return updated result with percentages
+    const [updatedResult] = await pool.query(
+      `
+      SELECT 
+        br.id,
+        br.booth_id,
+        br.party_id,
+        br.votes,
+        p.name as party_name,
+        p.short_name,
+        p.color,
+        b.total_voters,
+        ROUND((br.votes * 100.0 / NULLIF(b.total_voters, 0)), 2) as polling_percentage,
+        ROUND((br.votes * 100.0 / NULLIF(
+          (SELECT SUM(br2.votes) FROM booth_results br2 WHERE br2.booth_id = br.booth_id), 0
+        )), 2) as vote_share_percentage
+      FROM booth_results br
+      JOIN parties p ON br.party_id = p.id
+      JOIN booths b ON br.booth_id = b.id
+      WHERE br.id = ?
+    `,
+      [id]
+    );
+
+    res.json({
+      success: true,
+      data: (updatedResult as any[])[0],
+    });
+  } catch (error: any) {
+    console.error("Update booth result error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -3019,7 +3156,7 @@ app.put("/api/booth_results/:boothId/:partyId", async (req, res) => {
 
     res.json({
       success: true,
-      data: updatedResult || { booth_id: boothId, party_id: partyId, votes },
+      data: (updatedResult as any[])[0],
     });
   } catch (error: any) {
     console.error("Update booth result error:", error);
