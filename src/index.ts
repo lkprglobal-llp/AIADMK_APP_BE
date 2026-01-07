@@ -12,6 +12,7 @@ import ExcelJS from "exceljs";
 import PDFDocument, { fillColor } from "pdfkit";
 import dayjs from "dayjs";
 import { Buffer } from "buffer";
+import crypto from "crypto";
 
 //** Swagger definition for API Calls*/
 const options = {
@@ -80,7 +81,7 @@ app.use(
   })
 );
 
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(specs));
+app.use("/lkprglobal/API/Docs", swaggerUi.serve, swaggerUi.setup(specs));
 
 //** OTP Store and Token generations */
 // JWT secret (store in environment variables in production)
@@ -131,19 +132,72 @@ const authenticateToken = async (
   res: Response,
   next: () => void
 ) => {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1]; // Bearer <token>
-  if (!token) {
-    return res
-      .status(401)
-      .json({ success: false, message: "No token provided" });
-  }
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded; // Attach decoded user (id, role)
+    const authHeader = req.headers["authorization"];
+
+    if (!authHeader) {
+      return res.status(401).json({
+        success: false,
+        message: "Authorization header missing",
+        code: "NO_AUTH_HEADER",
+      });
+    }
+
+    const token = authHeader.split(" ")[1]; // Bearer <token>
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: "No token provided",
+        code: "NO_TOKEN",
+      });
+    }
+
+    if (!JWT_SECRET) {
+      console.error("JWT_SECRET not configured");
+      return res.status(500).json({
+        success: false,
+        message: "Server configuration error",
+        code: "CONFIG_ERROR",
+      });
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
+
+    if (!decoded || !decoded.id) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token payload",
+        code: "INVALID_PAYLOAD",
+      });
+    }
+
+    req.user = decoded;
     next();
-  } catch (error) {
-    return res.status(401).json({ success: false, message: "Invalid token" });
+  } catch (error: any) {
+    console.error("Token verification error:", error);
+
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({
+        success: false,
+        message: "Token has expired",
+        code: "TOKEN_EXPIRED",
+      });
+    }
+
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid token format",
+        code: "INVALID_TOKEN",
+      });
+    }
+
+    return res.status(401).json({
+      success: false,
+      message: "Token verification failed",
+      code: "VERIFICATION_FAILED",
+    });
   }
 };
 
@@ -285,6 +339,12 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
 });
+
+function qInt(value: unknown, def: number, min = 0, max = 100000): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return def;
+  return Math.min(max, Math.max(min, n));
+}
 
 /* The `// Retry logic for API requests` section in the code is implementing a retry mechanism for
 making API requests. This mechanism allows the code to retry sending an API request a specified
@@ -728,7 +788,7 @@ app.post(
         return;
       }
 
-      const user = results;
+      const user = results[0];
 
       // Check OTP expiry
       if (user.otp_expiry && new Date(user.otp_expiry) < new Date()) {
@@ -738,17 +798,10 @@ app.post(
 
       // Generate JWT token
       const token = jwt.sign(
-        { id: user.id, role: user.role, name: user.name },
+        { id: user.id, role: user.role, name: user.username },
         JWT_SECRET,
         {
           expiresIn: "3d",
-        },
-        function (e: any, token: any) {
-          if (e) {
-            console.log(e);
-          } else {
-            console.log(token);
-          }
         }
       );
 
@@ -1911,36 +1964,30 @@ app.post(
       status,
     } = req.body;
 
-    const rows: any = await query("SELECT * FROM funds");
-    if (!rows || rows.length === 0) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Member not found" });
-    }
-    // Validate required fields
-    if (!taskname || !tunion || !fundname || boothno === undefined) {
-      return res.status(400).json({
-        success: false,
-        message: "taskname, tunion, fundname, and boothno are required",
-      });
-    }
+    // // Validate required fields
+    // if (!taskname || !tunion || !fundname || boothno === undefined) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "taskname, tunion, fundname, and boothno are required",
+    //   });
+    // }
 
     try {
       const result: any = await query(
         `INSERT INTO funds (taskname, tunion, tpartyunion, tpanchayat, tvillage, year, amount, imageData, imageType, fundname, boothno, status)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          taskname,
-          tunion,
+          taskname || null,
+          tunion || null,
           tpartyunion || null,
           tpanchayat || null,
           tvillage || null,
           year || null,
-          amount,
+          amount || null,
           imageData,
           imageType,
-          fundname,
-          boothno,
+          fundname || null,
+          boothno || null,
           status || "Active",
         ]
       );
@@ -2193,223 +2240,6 @@ app.get("/api/regions", async (req, res) => {
   }
 });
 
-//MLA Election Years and Constituencies APIs
-app.get("/api/years", async (_, res) => {
-  const [rows] = await pool.query("SELECT * FROM election_years ORDER BY year");
-  res.json(rows);
-});
-
-app.post("/api/addyears", authenticateToken, async (req, res) => {
-  const { year } = req.body;
-  await pool.query("INSERT INTO election_years (year) VALUES (?)", [year]);
-  res.json({ success: true });
-});
-
-app.put("/api/updateyear/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  const { year } = req.body;
-  await pool.query("UPDATE election_years SET year=?, WHERE id=?", [year, id]);
-  res.json({ success: true });
-});
-
-app.delete("/api/deleteyear/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  await pool.query("DELETE FROM election_years WHERE id=?", [id]);
-  res.json({ success: true });
-});
-
-app.get("/api/constituencies", async (_, res) => {
-  const [rows] = await pool.query("SELECT * FROM constituencies");
-  res.json(rows);
-});
-
-app.post("/api/addconstituencies", authenticateToken, async (req, res) => {
-  const { constituency_no, constituency_code, constituency_name } = req.body;
-  await pool.query(
-    `INSERT INTO constituencies
-     (constituency_no, constituency_code, constituency_name)
-     VALUES (?,?,?)`,
-    [constituency_no, constituency_code, constituency_name]
-  );
-  res.json({ success: true });
-});
-
-app.put("/api/updateconstituency/:id", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  const { constituency_no, constituency_code, constituency_name } = req.body;
-  await pool.query(
-    `UPDATE constituencies 
-     SET constituency_no=?, constituency_code=?, constituency_name=?
-      WHERE id=?`,
-    [constituency_no, constituency_code, constituency_name, id]
-  );
-  res.json({ success: true });
-});
-
-app.delete(
-  "/api/deleteconstituency/:id",
-  authenticateToken,
-  async (req, res) => {
-    const { id } = req.params;
-    await pool.query("DELETE FROM constituencies WHERE id=?", [id]);
-    res.json({ success: true });
-  }
-);
-
-app.get("/api/booths/:constituencyId", async (req, res) => {
-  const [rows] = await pool.query(
-    "SELECT * FROM booths WHERE constituency_id = ?",
-    [req.params.constituencyId]
-  );
-  res.json(rows);
-});
-
-app.post("/api/booths", authenticateToken, async (req, res) => {
-  const { constituency_id, booth_no, village_name } = req.body;
-  await pool.query(
-    "INSERT INTO booths (constituency_id, booth_no, village_name) VALUES (?,?,?)",
-    [constituency_id, booth_no, village_name]
-  );
-  res.json({ success: true });
-});
-
-app.put("/constituency", authenticateToken, async (req, res) => {
-  const { constituency_id, year_id, polling, party } = req.body;
-
-  await pool.query(
-    `INSERT INTO election_results
-     (constituency_id, year_id, polling_percentage, party_percentage)
-     VALUES (?,?,?,?)
-     ON DUPLICATE KEY UPDATE
-     polling_percentage = VALUES(polling_percentage),
-     party_percentage = VALUES(party_percentage)`,
-    [constituency_id, year_id, polling, party]
-  );
-
-  res.json({ success: true });
-});
-
-app.put("/booth", authenticateToken, async (req, res) => {
-  const { booth_id, year_id, polling, party } = req.body;
-
-  await pool.query(
-    `INSERT INTO booth_results
-     (booth_id, year_id, polling_percentage, party_percentage)
-     VALUES (?,?,?,?)
-     ON DUPLICATE KEY UPDATE
-     polling_percentage = VALUES(polling_percentage),
-     party_percentage = VALUES(party_percentage)`,
-    [booth_id, year_id, polling, party]
-  );
-
-  res.json({ success: true });
-});
-
-//import export preview
-
-app.post("/preview", excelupload.single("file"), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({
-      message: "File is required",
-    });
-  }
-
-  const workbook = XLSX.read(req.file.buffer, {
-    type: "buffer",
-  });
-
-  const sheetName = workbook.SheetNames[0];
-  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
-    defval: null,
-  });
-
-  res.json({
-    totalRows: rows.length,
-    rows,
-  });
-});
-
-app.post("/commit", excelupload.single("file"), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ message: "File is required" });
-  }
-
-  const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
-
-  const rows = XLSX.utils.sheet_to_json<ImportBoothRow>(
-    workbook.Sheets[workbook.SheetNames[0]],
-    { defval: null }
-  );
-
-  const conn = await pool.getConnection();
-  await conn.beginTransaction();
-
-  try {
-    for (const row of rows) {
-      if (
-        typeof row.constituency_id !== "number" ||
-        typeof row.booth_no !== "number" ||
-        typeof row.year !== "number"
-      ) {
-        continue;
-      }
-
-      /* ---------- 1. Get year_id ---------- */
-      const [yearRows] = await conn.query<YearRow[]>(
-        "SELECT id FROM election_years WHERE year = ?",
-        [row.year]
-      );
-
-      if (!yearRows.length) continue;
-      const yearId = yearRows[0].id;
-
-      /* ---------- 2. Get or create booth ---------- */
-      const [boothRows] = await conn.query<BoothRow[]>(
-        `SELECT id FROM booths 
-           WHERE constituency_id = ? AND booth_no = ?`,
-        [row.constituency_id, row.booth_no]
-      );
-
-      let boothId: number;
-
-      if (boothRows.length) {
-        boothId = boothRows[0].id;
-      } else {
-        const [insertResult] = await conn.query<ResultSetHeader>(
-          `INSERT INTO booths
-             (constituency_id, booth_no, village_name)
-             VALUES (?,?,?)`,
-          [row.constituency_id, row.booth_no, row.village_name]
-        );
-
-        boothId = insertResult.insertId;
-      }
-
-      /* ---------- 3. Upsert booth results ---------- */
-      await conn.query(
-        `INSERT INTO booth_results
-           (booth_id, year_id, polling_percentage, party_percentage)
-           VALUES (?,?,?,?)
-           ON DUPLICATE KEY UPDATE
-           polling_percentage = VALUES(polling_percentage),
-           party_percentage = VALUES(party_percentage)`,
-        [boothId, yearId, row.polling_percentage, row.party_percentage]
-      );
-    }
-
-    await conn.commit();
-    res.json({ success: true });
-  } catch (err: any) {
-    await conn.rollback();
-    res.status(500).json({
-      message: "Import failed",
-      error: err.message,
-    });
-  } finally {
-    conn.release();
-  }
-});
-
 /* ----------------------------------------------------
    GET EVENTS (DATE RANGE — USED BY FULLCALENDAR)
 ---------------------------------------------------- */
@@ -2655,46 +2485,1202 @@ app.post(
   }
 );
 
-app.get("/api/booth-data", async (req, res) => {
-  const [rows] = await pool.query(
-    "SELECT id, boothNumber, data FROM booth_data"
-  );
-  // Type assert rows
-  const booths = (rows as any[]).map((row) => ({
-    id: row.id,
-    boothNumber: row.boothNumber,
-    ...JSON.parse(row.data), // Parse JSON string
-  }));
-  res.json(booths);
+// ==================== PARTY ROUTES ====================
+
+app.get("/api/parties", async (req, res) => {
+  try {
+    const [rows] = await pool.query("SELECT * FROM parties ORDER BY name");
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
-app.put("/api/booth-data/:id", async (req, res) => {
-  const { id } = req.params;
-  const { boothNumber, stationNames, pollingPct, partyVotes } = req.body;
-  const data = JSON.stringify({ stationNames, pollingPct, partyVotes });
-
-  await pool.query(
-    "INSERT INTO booth_data (id, boothNumber, data) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE boothNumber = ?, data = ?",
-    [id, boothNumber, data, boothNumber, data]
-  );
-
-  res.json({ id, boothNumber, ...JSON.parse(data) });
+app.get("/api/parties/:id", async (req, res) => {
+  try {
+    const [rows] = await pool.query<any[]>(
+      "SELECT * FROM parties WHERE id = ?",
+      [req.params.id]
+    );
+    if (rows.length === 0)
+      return res.status(404).json({ error: "Party not found" });
+    res.json(rows[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
-// Backend route (Express/MySQL example)
-app.delete("/api/booth-data/:id", async (req, res) => {
-  const { id } = req.params;
-  await pool.query("DELETE FROM booth_data WHERE id = ?", [id]);
-  res.status(204).send();
+app.post("/api/parties", async (req, res) => {
+  try {
+    const { name, short_name, color } = req.body;
+    const id = crypto.randomUUID();
+    await pool.query(
+      "INSERT INTO parties (id, name, short_name, color) VALUES (?, ?, ?, ?)",
+      [id, name, short_name, color || "#6B7280"]
+    );
+    const [rows] = await pool.query<any[]>(
+      "SELECT * FROM parties WHERE id = ?",
+      [id]
+    );
+    res.status(201).json(rows[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
-// // Serve static files from the Vite build
-// app.use(express.static(path.join(__dirname, "dist")));
 
-// // For React routing to work
-// app.get("/", (req, res) => {
-//   res.sendFile(path.resolve(__dirname, "dist", "index.html"));
-// });
-// app.set("case sensitive routing", false);
+app.put("/api/parties/:id", async (req, res) => {
+  try {
+    const { name, short_name, color } = req.body;
+    await pool.query(
+      "UPDATE parties SET name = ?, short_name = ?, color = ? WHERE id = ?",
+      [name, short_name, color, req.params.id]
+    );
+    const [rows] = await pool.query<any[]>(
+      "SELECT * FROM parties WHERE id = ?",
+      [req.params.id]
+    );
+    res.json(rows[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/parties/:id", async (req, res) => {
+  try {
+    await pool.query("DELETE FROM parties WHERE id = ?", [req.params.id]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== ELECTION ROUTES ====================
+
+app.get("/api/elections", async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      "SELECT * FROM elections ORDER BY year DESC"
+    );
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/elections/:id", async (req, res) => {
+  try {
+    const [rows] = await pool.query<any[]>(
+      "SELECT * FROM elections WHERE id = ?",
+      [req.params.id]
+    );
+    if (rows.length === 0)
+      return res.status(404).json({ error: "Election not found" });
+    res.json(rows[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/elections", async (req, res) => {
+  try {
+    const { name, year, type } = req.body;
+    const id = crypto.randomUUID();
+    await pool.query(
+      "INSERT INTO elections (id, name, year, type) VALUES (?, ?, ?, ?)",
+      [id, name, year, type || "general"]
+    );
+    const [rows] = await pool.query<any[]>(
+      "SELECT * FROM elections WHERE id = ?",
+      [id]
+    );
+    res.status(201).json(rows[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/elections/:id", async (req, res) => {
+  try {
+    const { name, year, type } = req.body;
+    await pool.query(
+      "UPDATE elections SET name = ?, year = ?, type = ? WHERE id = ?",
+      [name, year, type, req.params.id]
+    );
+    const [rows] = await pool.query<any[]>(
+      "SELECT * FROM elections WHERE id = ?",
+      [req.params.id]
+    );
+    res.json(rows[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/elections/:id", async (req, res) => {
+  try {
+    await pool.query("DELETE FROM elections WHERE id = ?", [req.params.id]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== BOOTH ROUTES ====================
+
+app.get("/api/booths", async (req, res) => {
+  console.log("GET /api/booths called with query:", req.query);
+  try {
+    const election_id = req.query.election_id as string | undefined;
+    const location = req.query.location as string | undefined;
+
+    // const page = parseInt(req.query.page as string) || 1;
+    // const limit = parseInt(req.query.limit as string) || 50;
+
+    // const offset = (page - 1) * limit;
+    const page = qInt(req.query.page, 1, 1, 10000);
+    const limit = qInt(req.query.limit, 50, 1, 100);
+    const offset = (page - 1) * limit;
+
+    let query = "SELECT * FROM v_booth_summary WHERE 1=1";
+    const params: any[] = [];
+
+    if (election_id) {
+      query += " AND election_id = ?";
+      params.push(election_id);
+    }
+
+    if (location) {
+      query += " AND location LIKE ?";
+      params.push(`%${location}%`);
+    }
+
+    query += " ORDER BY booth_number_start LIMIT ? OFFSET ?";
+    params.push(limit, offset);
+
+    console.log("Executing query:", query, params);
+    const [rows] = await pool.query(query, params);
+    console.log(
+      "Query successful, rows:",
+      Array.isArray(rows) ? rows.length : "not array"
+    );
+    res.json(rows);
+  } catch (error: any) {
+    console.error("GET /api/booths error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/booths/:id", async (req, res) => {
+  try {
+    const [booth] = await pool.query<any[]>(
+      "SELECT * FROM booths WHERE id = ?",
+      [req.params.id]
+    );
+    if (booth.length === 0)
+      return res.status(404).json({ error: "Booth not found" });
+
+    const [results] = await pool.query(
+      `SELECT 
+        br.id,
+        br.booth_id,
+        br.party_id,
+        br.votes,
+        p.name as party_name, 
+        p.short_name, 
+        p.color,
+        ROUND((br.votes * 100.0 / NULLIF(?, 0)), 2) as polling_percentage,
+        ROUND((br.votes * 100.0 / NULLIF(
+          (SELECT SUM(br2.votes) FROM booth_results br2 WHERE br2.booth_id = ?), 0
+        )), 2) as vote_share_percentage,
+        CASE WHEN br.votes = (
+          SELECT MAX(br3.votes) FROM booth_results br3 WHERE br3.booth_id = ?
+        ) THEN 1 ELSE 0 END as is_winner
+       FROM booth_results br 
+       JOIN parties p ON br.party_id = p.id 
+       WHERE br.booth_id = ?
+       ORDER BY br.votes DESC`,
+      [booth[0].total_voters, req.params.id, req.params.id, req.params.id]
+    );
+
+    // Calculate total votes cast and turnout
+    const totalVotesCast = (results as any[]).reduce(
+      (sum, result) => sum + (result.votes || 0),
+      0
+    );
+    const turnoutPercentage =
+      booth[0].total_voters > 0
+        ? Math.round(((totalVotesCast * 100.0) / booth[0].total_voters) * 100) /
+          100
+        : 0;
+
+    res.json({
+      ...booth[0],
+      results,
+      summary: {
+        total_votes_cast: totalVotesCast,
+        turnout_percentage: turnoutPercentage,
+        parties_contested: (results as any[]).length,
+      },
+    });
+  } catch (error: any) {
+    console.error("Get booth error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/booths", async (req, res) => {
+  try {
+    const {
+      election_id,
+      booth_name,
+      booth_number_start,
+      booth_number_end,
+      location,
+      male_voters,
+      female_voters,
+      transgender_voters,
+      total_voters,
+    } = req.body;
+    const id = crypto.randomUUID();
+    await pool.query(
+      `INSERT INTO booths (id, election_id, booth_name, booth_number_start, booth_number_end, location, male_voters, female_voters, transgender_voters, total_voters) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        election_id,
+        booth_name || null,
+        booth_number_start || null,
+        booth_number_end || null,
+        location || null,
+        male_voters || 0,
+        female_voters || 0,
+        transgender_voters || 0,
+        total_voters || 0,
+      ]
+    );
+    const [rows] = await pool.query<any[]>(
+      "SELECT * FROM booths WHERE id = ?",
+      [id]
+    );
+    const required = [
+      "election_id",
+      "booth_name",
+      "booth_number_start",
+      "booth_number_end",
+      "location",
+    ];
+    for (const field of required) {
+      if (!req.body[field]) {
+        return res
+          .status(400)
+          .json({ success: false, message: "All fields are required" });
+      }
+    }
+    console.log(rows);
+    res.status(201).json(rows[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/booths/:id", async (req, res) => {
+  try {
+    const {
+      booth_name,
+      booth_number_start,
+      booth_number_end,
+      location,
+      male_voters,
+      female_voters,
+      transgender_voters,
+      total_voters,
+    } = req.body;
+    await pool.query(
+      `UPDATE booths SET booth_name = ?, booth_number_start = ?, booth_number_end = ?, location = ?, male_voters = ?, female_voters = ?, transgender_voters = ?, total_voters = ? WHERE id = ?`,
+      [
+        booth_name,
+        booth_number_start,
+        booth_number_end,
+        location,
+        male_voters,
+        female_voters,
+        transgender_voters,
+        total_voters,
+        req.params.id,
+      ]
+    );
+    const [rows] = await pool.query<any[]>(
+      "SELECT * FROM booths WHERE id = ?",
+      [req.params.id]
+    );
+    res.json(rows[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/booths/:id", async (req, res) => {
+  try {
+    await pool.query("DELETE FROM booths WHERE id = ?", [req.params.id]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== BOOTH_RESULTS ROUTES ====================
+
+app.get("/api/booth_results", async (req, res) => {
+  try {
+    const { election_id, party_id, booth_id } = req.query;
+
+    let query = `
+      SELECT 
+        br.id,
+        br.booth_id,
+        br.party_id,
+        br.votes,
+        p.name as party_name,
+        p.short_name,
+        p.color,
+        b.booth_name,
+        b.location,
+        b.total_voters,
+        e.name as election_name,
+        e.year,
+        ROUND((br.votes * 100.0 / NULLIF(b.total_voters, 0)), 2) as polling_percentage,
+        ROUND((br.votes * 100.0 / NULLIF(
+          (SELECT SUM(br2.votes) FROM booth_results br2 WHERE br2.booth_id = br.booth_id), 0
+        )), 2) as vote_share_percentage,
+        CASE WHEN br.votes = (
+          SELECT MAX(br3.votes) FROM booth_results br3 WHERE br3.booth_id = br.booth_id
+        ) THEN 1 ELSE 0 END as is_winner
+      FROM booth_results br
+      JOIN parties p ON br.party_id = p.id
+      JOIN booths b ON br.booth_id = b.id
+      JOIN elections e ON b.election_id = e.id
+      WHERE 1=1
+    `;
+
+    const params = [];
+
+    if (election_id) {
+      query += " AND e.id = ?";
+      params.push(election_id);
+    }
+
+    if (party_id) {
+      query += " AND br.party_id = ?";
+      params.push(party_id);
+    }
+
+    if (booth_id) {
+      query += " AND br.booth_id = ?";
+      params.push(booth_id);
+    }
+
+    query += " ORDER BY b.booth_name, br.votes DESC";
+
+    const [rows] = await pool.query(query, params);
+    res.json(rows);
+  } catch (error: any) {
+    console.error("Booth results error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/booth_results/:boothId", async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        br.id,
+        br.booth_id,
+        br.party_id,
+        br.votes,
+        p.name as party_name,
+        p.short_name,
+        p.color,
+        b.booth_name,
+        b.total_voters,
+        ROUND((br.votes * 100.0 / NULLIF(b.total_voters, 0)), 2) as polling_percentage,
+        ROUND((br.votes * 100.0 / NULLIF(
+          (SELECT SUM(br2.votes) FROM booth_results br2 WHERE br2.booth_id = br.booth_id), 0
+        )), 2) as vote_share_percentage,
+        CASE WHEN br.votes = (
+          SELECT MAX(br3.votes) FROM booth_results br3 WHERE br3.booth_id = br.booth_id
+        ) THEN 1 ELSE 0 END as is_winner
+      FROM booth_results br
+      JOIN parties p ON br.party_id = p.id
+      JOIN booths b ON br.booth_id = b.id
+      WHERE br.booth_id = ?
+      ORDER BY br.votes DESC
+    `;
+
+    const [rows] = await pool.query(query, [req.params.boothId]);
+    res.json(rows);
+  } catch (error: any) {
+    console.error("Booth results error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/booth_results", async (req, res) => {
+  try {
+    const { booth_id, party_id, votes } = req.body;
+
+    if (!booth_id || !party_id || votes === undefined) {
+      return res
+        .status(400)
+        .json({ error: "booth_id, party_id, and votes are required" });
+    }
+
+    const id = crypto.randomUUID();
+    await pool.query(
+      `INSERT INTO booth_results (id, booth_id, party_id, votes) VALUES (?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE votes = VALUES(votes)`,
+      [id, booth_id, party_id, votes]
+    );
+
+    // Return updated result with percentages
+    const [result] = await pool.query(
+      `
+      SELECT 
+        br.id,
+        br.booth_id,
+        br.party_id,
+        br.votes,
+        p.name as party_name,
+        p.short_name,
+        p.color,
+        b.total_voters,
+        ROUND((br.votes * 100.0 / NULLIF(b.total_voters, 0)), 2) as polling_percentage,
+        ROUND((br.votes * 100.0 / NULLIF(
+          (SELECT SUM(br2.votes) FROM booth_results br2 WHERE br2.booth_id = br.booth_id), 0
+        )), 2) as vote_share_percentage
+      FROM booth_results br
+      JOIN parties p ON br.party_id = p.id
+      JOIN booths b ON br.booth_id = b.id
+      WHERE br.booth_id = ? AND br.party_id = ?
+    `,
+      [booth_id, party_id]
+    );
+
+    res.status(201).json({
+      success: true,
+      data: result || { booth_id, party_id, votes },
+    });
+  } catch (error: any) {
+    console.error("Create booth result error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/booth_results/:boothId/:partyId", async (req, res) => {
+  try {
+    const { boothId, partyId } = req.params;
+    const { votes } = req.body;
+
+    if (votes === undefined) {
+      return res.status(400).json({ error: "votes is required" });
+    }
+
+    const [result] = await pool.query(
+      "UPDATE booth_results SET votes = ? WHERE booth_id = ? AND party_id = ?",
+      [votes, boothId, partyId]
+    );
+
+    if ((result as any).affectedRows === 0) {
+      return res.status(404).json({ error: "Booth result not found" });
+    }
+
+    // Return updated result with percentages
+    const [updatedResult] = await pool.query(
+      `
+      SELECT 
+        br.id,
+        br.booth_id,
+        br.party_id,
+        br.votes,
+        p.name as party_name,
+        p.short_name,
+        p.color,
+        b.total_voters,
+        ROUND((br.votes * 100.0 / NULLIF(b.total_voters, 0)), 2) as polling_percentage,
+        ROUND((br.votes * 100.0 / NULLIF(
+          (SELECT SUM(br2.votes) FROM booth_results br2 WHERE br2.booth_id = br.booth_id), 0
+        )), 2) as vote_share_percentage
+      FROM booth_results br
+      JOIN parties p ON br.party_id = p.id
+      JOIN booths b ON br.booth_id = b.id
+      WHERE br.booth_id = ? AND br.party_id = ?
+    `,
+      [boothId, partyId]
+    );
+
+    res.json({
+      success: true,
+      data: updatedResult || { booth_id: boothId, party_id: partyId, votes },
+    });
+  } catch (error: any) {
+    console.error("Update booth result error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/booth_results/:boothId/:partyId", async (req, res) => {
+  try {
+    const [result] = await pool.query(
+      "DELETE FROM booth_results WHERE booth_id = ? AND party_id = ?",
+      [req.params.boothId, req.params.partyId]
+    );
+
+    if ((result as any).affectedRows === 0) {
+      return res.status(404).json({ error: "Booth result not found" });
+    }
+
+    res.json({ success: true, message: "Booth result deleted successfully" });
+  } catch (error: any) {
+    console.error("Delete booth result error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== ANALYTICS ROUTES ====================
+
+app.get("/api/analytics/party-comparison", async (req, res) => {
+  try {
+    const { election_id, party_ids } = req.query;
+    const partyIdArray = party_ids ? party_ids.toString().split(",") : [];
+
+    let query = `
+      SELECT 
+        p.id as party_id,
+        p.name as party_name,
+        p.short_name,
+        p.color,
+        COALESCE(SUM(br.votes), 0) as total_votes,
+        COUNT(DISTINCT b.id) as booths_contested,
+        ROUND((COALESCE(SUM(br.votes), 0) * 100.0 / NULLIF(SUM(b.total_voters), 0)), 2) as vote_percentage
+      FROM parties p
+      LEFT JOIN booth_results br ON p.id = br.party_id
+      LEFT JOIN booths b ON br.booth_id = b.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (election_id) {
+      query += " AND b.election_id = ?";
+      params.push(election_id);
+    }
+
+    if (partyIdArray.length > 0) {
+      query += ` AND p.id IN (${partyIdArray.map(() => "?").join(",")})`;
+      params.push(...partyIdArray);
+    }
+
+    query +=
+      " GROUP BY p.id, p.name, p.short_name, p.color ORDER BY total_votes DESC";
+
+    const [rows] = await pool.query(query, params);
+    res.json(rows);
+  } catch (error: any) {
+    console.error("Party comparison error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/analytics/party-trend/:partyId", async (req, res) => {
+  try {
+    const { partyId } = req.params;
+    const query = `
+      SELECT 
+        e.year,
+        e.name as election_name,
+        COALESCE(SUM(br.votes), 0) as total_votes,
+        COUNT(DISTINCT b.id) as booths_contested,
+        ROUND((COALESCE(SUM(br.votes), 0) * 100.0 / NULLIF(SUM(b.total_voters), 0)), 2) as vote_percentage
+      FROM elections e
+      LEFT JOIN booths b ON e.id = b.election_id
+      LEFT JOIN booth_results br ON b.id = br.booth_id AND br.party_id = ?
+      GROUP BY e.id, e.year, e.name
+      ORDER BY e.year ASC
+    `;
+
+    const [rows] = await pool.query(query, [partyId]);
+    res.json(rows);
+  } catch (error: any) {
+    console.error("Party trend error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/analytics/booth-winners", async (req, res) => {
+  try {
+    const { election_id } = req.query;
+    const query = `
+      SELECT 
+        b.id as booth_id,
+        b.booth_name,
+        b.location,
+        p.name as winning_party,
+        p.short_name,
+        p.color,
+        br.votes as winning_votes,
+        b.total_voters,
+        ROUND((br.votes * 100.0 / NULLIF(b.total_voters, 0)), 2) as vote_percentage
+      FROM booths b
+      JOIN booth_results br ON b.id = br.booth_id
+      JOIN parties p ON br.party_id = p.id
+      WHERE br.votes = (
+        SELECT MAX(br2.votes) 
+        FROM booth_results br2 
+        WHERE br2.booth_id = b.id
+      )
+      ${election_id ? "AND b.election_id = ?" : ""}
+      ORDER BY b.booth_name
+    `;
+
+    const params = election_id ? [election_id] : [];
+    const [rows] = await pool.query(query, params);
+    res.json(rows);
+  } catch (error: any) {
+    console.error("Booth winners error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/analytics/election-summary/:electionId", async (req, res) => {
+  try {
+    const { electionId } = req.params;
+    const query = `
+      SELECT 
+        e.name as election_name,
+        e.year,
+        COUNT(DISTINCT b.id) as total_booths,
+        SUM(b.total_voters) as total_voters,
+        SUM(CASE WHEN br.votes IS NOT NULL THEN br.votes ELSE 0 END) as total_votes_cast,
+        ROUND((SUM(CASE WHEN br.votes IS NOT NULL THEN br.votes ELSE 0 END) * 100.0 / NULLIF(SUM(b.total_voters), 0)), 2) as overall_turnout,
+        COUNT(DISTINCT br.party_id) as parties_contested
+      FROM elections e
+      LEFT JOIN booths b ON e.id = b.election_id
+      LEFT JOIN booth_results br ON b.id = br.booth_id
+      WHERE e.id = ?
+      GROUP BY e.id, e.name, e.year
+    `;
+
+    const [rows] = await pool.query<any[]>(query, [electionId]);
+    res.json(rows[0] || {});
+  } catch (error: any) {
+    console.error("Election summary error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/analytics/yearly-stats", async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        e.year,
+        COUNT(DISTINCT e.id) as elections_held,
+        COUNT(DISTINCT b.id) as total_booths,
+        SUM(b.total_voters) as total_voters,
+        SUM(CASE WHEN br.votes IS NOT NULL THEN br.votes ELSE 0 END) as total_votes_cast,
+        ROUND(AVG(CASE WHEN b.total_voters > 0 THEN (br.votes * 100.0 / b.total_voters) ELSE 0 END), 2) as avg_turnout
+      FROM elections e
+      LEFT JOIN booths b ON e.id = b.election_id
+      LEFT JOIN booth_results br ON b.id = br.booth_id
+      GROUP BY e.year
+      ORDER BY e.year DESC
+    `;
+
+    const [rows] = await pool.query(query);
+    res.json(rows);
+  } catch (error: any) {
+    console.error("Yearly stats error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/analytics/party-vote-summary", async (req, res) => {
+  try {
+    const { election_id } = req.query;
+    let query = `
+      SELECT 
+        p.id as party_id,
+        p.name as party_name,
+        p.short_name,
+        p.color,
+        COALESCE(SUM(br.votes), 0) as total_votes,
+        COUNT(DISTINCT br.booth_id) as booths_won,
+        COUNT(DISTINCT b.id) as booths_contested,
+        ROUND((COALESCE(SUM(br.votes), 0) * 100.0 / NULLIF(
+          (SELECT SUM(br2.votes) FROM booth_results br2 
+           JOIN booths b2 ON br2.booth_id = b2.id 
+           ${election_id ? "WHERE b2.election_id = ?" : ""}), 0
+        )), 2) as vote_share_percentage,
+        ROUND((COUNT(DISTINCT CASE WHEN br.votes = (
+          SELECT MAX(br3.votes) FROM booth_results br3 WHERE br3.booth_id = br.booth_id
+        ) THEN br.booth_id END) * 100.0 / NULLIF(COUNT(DISTINCT b.id), 0)), 2) as booth_win_percentage
+      FROM parties p
+      LEFT JOIN booth_results br ON p.id = br.party_id
+      LEFT JOIN booths b ON br.booth_id = b.id
+    `;
+
+    const params = [];
+    if (election_id) {
+      query += " WHERE b.election_id = ?";
+      params.push(election_id);
+      params.push(election_id); // for subquery
+    }
+
+    query +=
+      " GROUP BY p.id, p.name, p.short_name, p.color ORDER BY total_votes DESC";
+
+    const [rows] = await pool.query(query, params);
+    res.json(rows);
+  } catch (error: any) {
+    console.error("Party vote summary error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/analytics/location-summary", async (req, res) => {
+  try {
+    const { election_id } = req.query;
+    let query = `
+      SELECT 
+        b.location,
+        COUNT(DISTINCT b.id) as total_booths,
+        SUM(b.total_voters) as total_voters,
+        SUM(CASE WHEN br.votes IS NOT NULL THEN br.votes ELSE 0 END) as total_votes_cast,
+        ROUND((SUM(CASE WHEN br.votes IS NOT NULL THEN br.votes ELSE 0 END) * 100.0 / NULLIF(SUM(b.total_voters), 0)), 2) as turnout_percentage,
+        (
+          SELECT p.name 
+          FROM parties p 
+          JOIN booth_results br2 ON p.id = br2.party_id 
+          JOIN booths b2 ON br2.booth_id = b2.id 
+          WHERE b2.location = b.location
+          ${election_id ? "AND b2.election_id = ?" : ""}
+          GROUP BY p.id, p.name 
+          ORDER BY SUM(br2.votes) DESC 
+          LIMIT 1
+        ) as leading_party
+      FROM booths b
+      LEFT JOIN booth_results br ON b.id = br.booth_id
+    `;
+
+    const params = [];
+    if (election_id) {
+      query += " WHERE b.election_id = ?";
+      params.push(election_id);
+      params.push(election_id); // for subquery
+    }
+
+    query += " GROUP BY b.location ORDER BY total_votes_cast DESC";
+
+    const [rows] = await pool.query(query, params);
+    res.json(rows);
+  } catch (error: any) {
+    console.error("Location summary error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/analytics/chart-data/:electionId", async (req, res) => {
+  try {
+    const { electionId } = req.params;
+
+    // Get party-wise vote data for charts
+    const partyQuery = `
+      SELECT 
+        p.name as party_name,
+        p.short_name,
+        p.color,
+        COALESCE(SUM(br.votes), 0) as votes,
+        ROUND((COALESCE(SUM(br.votes), 0) * 100.0 / NULLIF(
+          (SELECT SUM(br2.votes) FROM booth_results br2 
+           JOIN booths b2 ON br2.booth_id = b2.id 
+           WHERE b2.election_id = ?), 0
+        )), 2) as percentage
+      FROM parties p
+      LEFT JOIN booth_results br ON p.id = br.party_id
+      LEFT JOIN booths b ON br.booth_id = b.id AND b.election_id = ?
+      GROUP BY p.id, p.name, p.short_name, p.color
+      HAVING votes > 0
+      ORDER BY votes DESC
+    `;
+
+    // Get location-wise data
+    const locationQuery = `
+      SELECT 
+        b.location,
+        COUNT(b.id) as booth_count,
+        SUM(b.total_voters) as total_voters,
+        SUM(CASE WHEN br.votes IS NOT NULL THEN br.votes ELSE 0 END) as votes_cast,
+        ROUND((SUM(CASE WHEN br.votes IS NOT NULL THEN br.votes ELSE 0 END) * 100.0 / NULLIF(SUM(b.total_voters), 0)), 2) as turnout
+      FROM booths b
+      LEFT JOIN booth_results br ON b.id = br.booth_id
+      WHERE b.election_id = ?
+      GROUP BY b.location
+      ORDER BY votes_cast DESC
+    `;
+
+    const [partyData] = await pool.query(partyQuery, [electionId, electionId]);
+    const [locationData] = await pool.query(locationQuery, [electionId]);
+
+    res.json({
+      partyData,
+      locationData,
+      summary: {
+        totalParties: (partyData as any[]).length,
+        totalLocations: (locationData as any[]).length,
+        totalVotes: (partyData as any[]).reduce(
+          (sum, party) => sum + party.votes,
+          0
+        ),
+      },
+    });
+  } catch (error: any) {
+    console.error("Chart data error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== POLLING DATA ROUTES ====================
+
+app.get("/api/polling/booth-results/:boothId", async (req, res) => {
+  try {
+    const { boothId } = req.params;
+    const query = `
+      SELECT 
+        br.id,
+        br.booth_id,
+        br.party_id,
+        br.votes,
+        p.name as party_name,
+        p.short_name,
+        p.color,
+        b.booth_name,
+        b.total_voters,
+        ROUND((br.votes * 100.0 / NULLIF(b.total_voters, 0)), 2) as vote_percentage,
+        ROUND((br.votes * 100.0 / NULLIF(
+          (SELECT SUM(br2.votes) FROM booth_results br2 WHERE br2.booth_id = br.booth_id), 0
+        )), 2) as vote_share_percentage
+      FROM booth_results br
+      JOIN parties p ON br.party_id = p.id
+      JOIN booths b ON br.booth_id = b.id
+      WHERE br.booth_id = ?
+      ORDER BY br.votes DESC
+    `;
+
+    const [rows] = await pool.query(query, [boothId]);
+    res.json(rows);
+  } catch (error: any) {
+    console.error("Booth results error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/polling/election-overview/:electionId", async (req, res) => {
+  try {
+    const { electionId } = req.params;
+
+    // Get comprehensive election data
+    const overviewQuery = `
+      SELECT 
+        e.id as election_id,
+        e.name as election_name,
+        e.year,
+        COUNT(DISTINCT b.id) as total_booths,
+        SUM(b.total_voters) as total_registered_voters,
+        SUM(CASE WHEN br.votes IS NOT NULL THEN br.votes ELSE 0 END) as total_votes_cast,
+        ROUND((SUM(CASE WHEN br.votes IS NOT NULL THEN br.votes ELSE 0 END) * 100.0 / NULLIF(SUM(b.total_voters), 0)), 2) as overall_turnout_percentage,
+        COUNT(DISTINCT br.party_id) as parties_contested
+      FROM elections e
+      LEFT JOIN booths b ON e.id = b.election_id
+      LEFT JOIN booth_results br ON b.id = br.booth_id
+      WHERE e.id = ?
+      GROUP BY e.id, e.name, e.year
+    `;
+
+    // Get party-wise results
+    const partyResultsQuery = `
+      SELECT 
+        p.id as party_id,
+        p.name as party_name,
+        p.short_name,
+        p.color,
+        COALESCE(SUM(br.votes), 0) as total_votes,
+        COUNT(DISTINCT br.booth_id) as booths_contested,
+        COUNT(DISTINCT CASE WHEN br.votes = (
+          SELECT MAX(br3.votes) FROM booth_results br3 WHERE br3.booth_id = br.booth_id
+        ) THEN br.booth_id END) as booths_won,
+        ROUND((COALESCE(SUM(br.votes), 0) * 100.0 / NULLIF(
+          (SELECT SUM(br2.votes) FROM booth_results br2 
+           JOIN booths b2 ON br2.booth_id = b2.id 
+           WHERE b2.election_id = ?), 0
+        )), 2) as vote_share_percentage,
+        ROUND((COUNT(DISTINCT CASE WHEN br.votes = (
+          SELECT MAX(br3.votes) FROM booth_results br3 WHERE br3.booth_id = br.booth_id
+        ) THEN br.booth_id END) * 100.0 / NULLIF(COUNT(DISTINCT b.id), 0)), 2) as booth_win_percentage
+      FROM parties p
+      LEFT JOIN booth_results br ON p.id = br.party_id
+      LEFT JOIN booths b ON br.booth_id = b.id AND b.election_id = ?
+      GROUP BY p.id, p.name, p.short_name, p.color
+      HAVING total_votes > 0
+      ORDER BY total_votes DESC
+    `;
+
+    const [overviewData] = await pool.query(overviewQuery, [electionId]);
+    const [partyResults] = await pool.query(partyResultsQuery, [
+      electionId,
+      electionId,
+    ]);
+
+    res.json({
+      overview: overviewData || {},
+      partyResults: partyResults || [],
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error("Election overview error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/polling/live-results", async (req, res) => {
+  try {
+    const { election_id } = req.query;
+
+    const query = `
+      SELECT 
+        b.id as booth_id,
+        b.booth_name,
+        b.location,
+        b.total_voters,
+        (
+          SELECT JSON_ARRAYAGG(
+            JSON_OBJECT(
+              'party_id', p.id,
+              'party_name', p.name,
+              'short_name', p.short_name,
+              'color', p.color,
+              'votes', COALESCE(br.votes, 0),
+              'percentage', ROUND((COALESCE(br.votes, 0) * 100.0 / NULLIF(b.total_voters, 0)), 2)
+            )
+          )
+          FROM parties p
+          LEFT JOIN booth_results br ON p.id = br.party_id AND br.booth_id = b.id
+        ) as party_results,
+        (
+          SELECT SUM(br2.votes) 
+          FROM booth_results br2 
+          WHERE br2.booth_id = b.id
+        ) as total_votes_cast,
+        ROUND((
+          (SELECT SUM(br2.votes) FROM booth_results br2 WHERE br2.booth_id = b.id) 
+          * 100.0 / NULLIF(b.total_voters, 0)
+        ), 2) as turnout_percentage
+      FROM booths b
+      ${election_id ? "WHERE b.election_id = ?" : ""}
+      ORDER BY b.booth_name
+    `;
+
+    const params = election_id ? [election_id] : [];
+    const [rows] = await pool.query(query, params);
+
+    // Parse JSON results
+    const results = (rows as any[]).map((row) => ({
+      ...row,
+      party_results: row.party_results ? JSON.parse(row.party_results) : [],
+    }));
+
+    res.json(results);
+  } catch (error: any) {
+    console.error("Live results error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== SEARCH ROUTES ====================
+
+app.get("/api/search/booths", async (req, res) => {
+  try {
+    const term = req.query.term as string | undefined;
+    const election_id = req.query.election_id as string | undefined;
+
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt(req.query.limit as string) || 50)
+    );
+    const offset = Math.max(0, parseInt(req.query.offset as string) || 0);
+
+    const [rows] = await pool.query<any[]>(
+      "CALL sp_search_booths(?, ?, ?, ?)",
+      [term || null, election_id || null, limit, offset]
+    );
+
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== BULK OPERATIONS ROUTES ====================
+
+app.post("/api/bulk/booths", async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const { booths } = req.body;
+    const results = [];
+
+    for (const booth of booths) {
+      const id = crypto.randomUUID();
+      await connection.query(
+        `INSERT INTO booths (id, election_id, booth_name, booth_number_start, booth_number_end, location, male_voters, female_voters, transgender_voters, total_voters) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          booth.election_id,
+          booth.booth_name,
+          booth.booth_number_start,
+          booth.booth_number_end || null,
+          booth.location,
+          booth.male_voters || 0,
+          booth.female_voters || 0,
+          booth.transgender_voters || 0,
+          booth.total_voters || 0,
+        ]
+      );
+      results.push({ id, ...booth });
+    }
+
+    await connection.commit();
+    res.status(201).json({ success: true, data: results });
+  } catch (error: any) {
+    await connection.rollback();
+    res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
+app.post("/api/bulk/results", async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const { results } = req.body;
+
+    for (const result of results) {
+      await connection.query(
+        `INSERT INTO booth_results (id, booth_id, party_id, votes) VALUES (UUID(), ?, ?, ?) ON DUPLICATE KEY UPDATE votes = ?`,
+        [result.booth_id, result.party_id, result.votes, result.votes]
+      );
+    }
+
+    await connection.commit();
+    res.status(201).json({ success: true, count: results.length });
+  } catch (error: any) {
+    await connection.rollback();
+    res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
+// ==================== IMPORT/EXPORT ROUTES ====================
+
+app.post("/api/import/excel", upload.single("file"), async (req, res) => {
+  const connection = await pool.getConnection();
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+    const { election_id } = req.body;
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const data = XLSX.utils.sheet_to_json(
+      workbook.Sheets[workbook.SheetNames[0]]
+    );
+
+    await connection.beginTransaction();
+    let importedCount = 0;
+    let row: any;
+
+    for (row of data) {
+      const id = crypto.randomUUID();
+      await connection.query(
+        `INSERT INTO booths (id, election_id, booth_name, booth_number_start, booth_number_end, location, male_voters, female_voters, transgender_voters, total_voters) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          election_id,
+          row.booth_name || `Booth ${row.booth_number_start}`,
+          parseInt(String(row.booth_number_start)) || 0,
+          row.booth_number_end ? parseInt(String(row.booth_number_end)) : null,
+          row.location || "",
+          parseInt(String(row.male_voters)) || 0,
+          parseInt(String(row.female_voters)) || 0,
+          parseInt(String(row.transgender_voters)) || 0,
+          parseInt(String(row.total_voters)) || 0,
+        ]
+      );
+      importedCount++;
+    }
+
+    await connection.commit();
+    res.json({ success: true, imported: importedCount });
+  } catch (error: any) {
+    await connection.rollback();
+    res.status(500).json({ error: error.message });
+  } finally {
+    connection.release();
+  }
+});
+
+app.get("/api/export/excel", async (req, res) => {
+  try {
+    const { election_id } = req.query;
+    let query = "SELECT * FROM v_booth_results_detailed";
+    const params = [];
+    if (election_id) {
+      query += " WHERE election_id = ?";
+      params.push(election_id);
+    }
+    const [rows] = await pool.query<any[]>(query, params);
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(rows),
+      "Election Data"
+    );
+    const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=election_data.xlsx"
+    );
+    res.send(buffer);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/export/all", async (req, res) => {
+  try {
+    const [parties] = await pool.query("SELECT * FROM parties");
+    const [elections] = await pool.query("SELECT * FROM elections");
+    const [booths] = await pool.query("SELECT * FROM booths");
+    const [results] = await pool.query("SELECT * FROM booth_results");
+    res.json({ parties, elections, booths, results });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 /** Start server */
 // app.listen(5253, () => {
