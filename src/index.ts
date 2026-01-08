@@ -278,7 +278,7 @@ async function query<T = RowDataPacket[]>(
         err.code === "PROTOCOL_CONNECTION_LOST" ||
         err.code === "PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR")
     ) {
-      console.log(`Query failed, retrying... (${retries} attempts left)`);
+      //console.log(`Query failed, retrying... (${retries} attempts left)`);
       // Wait before retrying
       await new Promise((resolve) =>
         setTimeout(resolve, 500 + Math.random() * 1000)
@@ -756,7 +756,7 @@ app.post(
   "/api/validate-otp",
   async (req: Request, res: Response): Promise<void> => {
     if (res.headersSent) {
-      console.log("Headers already sent in /api/validate-otp");
+      //console.log("Headers already sent in /api/validate-otp");
       return;
     }
     const { mobile, otp } = req.body;
@@ -827,7 +827,7 @@ app.post(
     } catch (error) {
       console.error("Admin check error:", error);
       if (res.headersSent) {
-        console.log("Headers already sent in /api/validate-otp catch");
+        //console.log("Headers already sent in /api/validate-otp catch");
         return;
       }
       res.status(500).json({ success: false, message: "Server error" });
@@ -1357,7 +1357,7 @@ app.get(
   authenticateToken,
   async (req: AuthRequest, res: Response): Promise<void> => {
     if (res.headersSent) {
-      console.log("Headers already sent in /api/view-positions");
+      //console.log("Headers already sent in /api/view-positions");
       return;
     }
     try {
@@ -1370,7 +1370,7 @@ app.get(
     } catch (error) {
       console.error("Fetch positions error:", error);
       if (res.headersSent) {
-        console.log("Headers already sent in /api/positions catch");
+        //console.log("Headers already sent in /api/positions catch");
         return;
       }
       res.status(500).json({ success: false, message: "Server error" });
@@ -2649,11 +2649,11 @@ app.get("/api/test/booths", async (req, res) => {
 
 app.get("/api/booths", async (req, res) => {
   try {
-    console.log("GET /api/booths called with query:", req.query);
+    //console.log("GET /api/booths called with query:", req.query);
 
     // Simple query first to test data exists
     const [testRows] = await pool.query("SELECT COUNT(*) as count FROM booths");
-    console.log("Total booths in database:", (testRows as any)[0].count);
+    //console.log("Total booths in database:", (testRows as any)[0].count);
 
     const election_id = req.query.election_id as string | undefined;
     const location = req.query.location as string | undefined;
@@ -2677,9 +2677,9 @@ app.get("/api/booths", async (req, res) => {
     query += " ORDER BY booth_number_start LIMIT ? OFFSET ?";
     params.push(limit, offset);
 
-    console.log("Executing query:", query, "with params:", params);
+    // //console.log("Executing query:", query, "with params:", params);
     const [rows] = await pool.query(query, params);
-    console.log("Query result count:", (rows as any[]).length);
+    //console.log("Query result count:", (rows as any[]).length);
 
     res.json(rows);
   } catch (error: any) {
@@ -2768,6 +2768,8 @@ app.post("/api/booths", async (req, res) => {
       female_voters,
       transgender_voters,
       total_voters,
+      total_polled_votes,
+      total_votes,
     } = req.body;
 
     // Validate required fields BEFORE database operation
@@ -2788,8 +2790,8 @@ app.post("/api/booths", async (req, res) => {
 
     const id = crypto.randomUUID();
     await pool.query(
-      `INSERT INTO booths (id, election_id, booth_name, booth_number_start, booth_number_end, location, male_voters, female_voters, transgender_voters, total_voters) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO booths (id, election_id, booth_name, booth_number_start, booth_number_end, location, male_voters, female_voters, transgender_voters, total_voters, total_polled_votes, total_votes) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         election_id,
@@ -2801,6 +2803,8 @@ app.post("/api/booths", async (req, res) => {
         female_voters || 0,
         transgender_voters || 0,
         total_voters || 0,
+        total_polled_votes || 0,
+        total_votes || 0,
       ]
     );
 
@@ -2809,7 +2813,10 @@ app.post("/api/booths", async (req, res) => {
       [id]
     );
 
-    res.status(201).json({ success: true, data: rows[0] });
+    res.status(201).json({
+      success: true,
+      data: rows[0],
+    });
   } catch (error: any) {
     console.error("Create booth error:", error);
     res.status(500).json({ success: false, error: error.message });
@@ -2828,6 +2835,8 @@ app.put("/api/booths/:id", async (req, res) => {
       female_voters,
       transgender_voters,
       total_voters,
+      total_polled_votes,
+      total_votes,
     } = req.body;
 
     // Check if booth exists
@@ -2844,7 +2853,7 @@ app.put("/api/booths/:id", async (req, res) => {
     }
 
     const [result] = await pool.query(
-      `UPDATE booths SET booth_name = ?, booth_number_start = ?, booth_number_end = ?, location = ?, male_voters = ?, female_voters = ?, transgender_voters = ?, total_voters = ? WHERE id = ?`,
+      `UPDATE booths SET booth_name = ?, booth_number_start = ?, booth_number_end = ?, location = ?, male_voters = ?, female_voters = ?, transgender_voters = ?, total_voters = ?, total_polled_votes = ?, total_votes = ? WHERE id = ?`,
       [
         booth_name,
         booth_number_start,
@@ -2854,6 +2863,8 @@ app.put("/api/booths/:id", async (req, res) => {
         female_voters || 0,
         transgender_voters || 0,
         total_voters || 0,
+        total_polled_votes || 0,
+        total_votes || 0,
         id,
       ]
     );
@@ -2870,7 +2881,10 @@ app.put("/api/booths/:id", async (req, res) => {
       [id]
     );
 
-    res.json({ success: true, data: rows[0] });
+    res.json({
+      success: true,
+      data: rows[0],
+    });
   } catch (error: any) {
     console.error("Update booth error:", error);
     res.status(500).json({ success: false, error: error.message });
@@ -2928,6 +2942,11 @@ app.get("/api/booth_results", async (req, res) => {
         b.booth_name,
         b.location,
         b.total_voters,
+        b.male_voters,
+        b.female_voters,
+        b.transgender_voters,
+        b.total_polled_votes,
+        b.total_votes,
         e.name as election_name,
         e.year,
         ROUND((br.votes * 100.0 / NULLIF(b.total_voters, 0)), 2) as polling_percentage,
@@ -2961,7 +2980,7 @@ app.get("/api/booth_results", async (req, res) => {
       params.push(booth_id);
     }
 
-    query += " ORDER BY b.booth_name, br.votes DESC";
+    query += " ORDER BY br.id DESC, b.booth_name, br.votes DESC";
 
     const [rows] = await pool.query(query, params);
     res.json(rows);
@@ -2984,6 +3003,11 @@ app.get("/api/booth_results/:boothId", async (req, res) => {
         p.color,
         b.booth_name,
         b.total_voters,
+        b.male_voters,
+        b.female_voters,
+        b.transgender_voters,
+        b.total_polled_votes,
+        b.total_votes,
         ROUND((br.votes * 100.0 / NULLIF(b.total_voters, 0)), 2) as polling_percentage,
         ROUND((br.votes * 100.0 / NULLIF(
           (SELECT SUM(br2.votes) FROM booth_results br2 WHERE br2.booth_id = br.booth_id), 0
