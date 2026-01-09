@@ -2773,20 +2773,20 @@ app.post("/api/booths", async (req, res) => {
     } = req.body;
 
     // Validate required fields BEFORE database operation
-    const required = [
-      "election_id",
-      "booth_name",
-      "booth_number_start",
-      "location",
-    ];
-    for (const field of required) {
-      if (!req.body[field]) {
-        return res.status(400).json({
-          success: false,
-          error: `${field} is required`,
-        });
-      }
-    }
+    // const required = [
+    //   "election_id",
+    //   "booth_name",
+    //   "booth_number_start",
+    //   "location",
+    // ];
+    // for (const field of required) {
+    //   if (!req.body[field]) {
+    //     return res.status(400).json({
+    //       success: false,
+    //       error: `${field} is required`,
+    //     });
+    //   }
+    // }
 
     const id = crypto.randomUUID();
     await pool.query(
