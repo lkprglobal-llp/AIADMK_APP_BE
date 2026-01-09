@@ -2657,9 +2657,9 @@ app.get("/api/booths", async (req, res) => {
 
     const election_id = req.query.election_id as string | undefined;
     const location = req.query.location as string | undefined;
-    const page = qInt(req.query.page, 1, 1, 10000);
-    const limit = qInt(req.query.limit, 50, 1, 100);
-    const offset = (page - 1) * limit;
+    // const page = qInt(req.query.page, 1, 1, 10000);
+    // const limit = qInt(req.query.limit, 50, 1, 100);
+    // const offset = (page - 1) * limit;
 
     let query = "SELECT * FROM booths WHERE 1=1";
     const params: any[] = [];
@@ -2674,8 +2674,8 @@ app.get("/api/booths", async (req, res) => {
       params.push(`%${location}%`);
     }
 
-    query += " ORDER BY booth_number_start LIMIT ? OFFSET ?";
-    params.push(limit, offset);
+    query += " ORDER BY booth_number_start";
+    // params.push(limit, offset);
 
     // //console.log("Executing query:", query, "with params:", params);
     const [rows] = await pool.query(query, params);
@@ -2770,6 +2770,7 @@ app.post("/api/booths", async (req, res) => {
       total_voters,
       total_polled_votes,
       total_votes,
+      sections,
     } = req.body;
 
     // Validate required fields BEFORE database operation
@@ -2790,8 +2791,8 @@ app.post("/api/booths", async (req, res) => {
 
     const id = crypto.randomUUID();
     await pool.query(
-      `INSERT INTO booths (id, election_id, booth_name, booth_number_start, booth_number_end, location, male_voters, female_voters, transgender_voters, total_voters, total_polled_votes, total_votes) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO booths (id, election_id, booth_name, booth_number_start, booth_number_end, location, male_voters, female_voters, transgender_voters, total_voters, total_polled_votes, total_votes, sections) 
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         election_id,
@@ -2805,6 +2806,7 @@ app.post("/api/booths", async (req, res) => {
         total_voters || 0,
         total_polled_votes || 0,
         total_votes || 0,
+        sections || null,
       ]
     );
 
@@ -2837,6 +2839,7 @@ app.put("/api/booths/:id", async (req, res) => {
       total_voters,
       total_polled_votes,
       total_votes,
+      sections,
     } = req.body;
 
     // Check if booth exists
@@ -2853,7 +2856,7 @@ app.put("/api/booths/:id", async (req, res) => {
     }
 
     const [result] = await pool.query(
-      `UPDATE booths SET booth_name = ?, booth_number_start = ?, booth_number_end = ?, location = ?, male_voters = ?, female_voters = ?, transgender_voters = ?, total_voters = ?, total_polled_votes = ?, total_votes = ? WHERE id = ?`,
+      `UPDATE booths SET booth_name = ?, booth_number_start = ?, booth_number_end = ?, location = ?, male_voters = ?, female_voters = ?, transgender_voters = ?, total_voters = ?, total_polled_votes = ?, total_votes = ?, sections = ? WHERE id = ?`,
       [
         booth_name,
         booth_number_start,
@@ -2865,6 +2868,7 @@ app.put("/api/booths/:id", async (req, res) => {
         total_voters || 0,
         total_polled_votes || 0,
         total_votes || 0,
+        sections || null,
         id,
       ]
     );
@@ -2936,6 +2940,7 @@ app.get("/api/booth_results", async (req, res) => {
         br.booth_id,
         br.party_id,
         br.votes,
+        b.sections,
         p.name as party_name,
         p.short_name,
         p.color,
