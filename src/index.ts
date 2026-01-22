@@ -2583,11 +2583,28 @@ app.get("/api/elections/:id", async (req, res) => {
 
 app.post("/api/elections", async (req, res) => {
   try {
-    const { name, year, type } = req.body;
+    const { 
+      name, 
+      year, 
+      type, 
+      election_body, 
+      pc_name, 
+      ac_name, 
+      urban_name, 
+      rural_name, 
+      election_description, 
+      electrol_release_date, 
+      total_all_booths, 
+      total_all_voters, 
+      total_male_voters, 
+      total_female_voters, 
+      total_transgender_voters, 
+      remarks 
+    } = req.body;
     const id = crypto.randomUUID();
     await pool.query(
-      "INSERT INTO elections (id, name, year, type) VALUES (?, ?, ?, ?)",
-      [id, name, year, type || "general"]
+      "INSERT INTO elections (id, name, year, type, election_body, pc_name, ac_name, urban_name, rural_name, election_description, electrol_release_date, total_all_booths, total_all_voters, total_male_voters, total_female_voters, total_transgender_voters, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [id, name, year, type || "general", election_body || null, pc_name || null, ac_name || null, urban_name || null, rural_name || null, election_description || null, electrol_release_date || null, total_all_booths || 0, total_all_voters || 0, total_male_voters || 0, total_female_voters || 0, total_transgender_voters || 0, remarks || null]
     );
     const [rows] = await pool.query<any[]>(
       "SELECT * FROM elections WHERE id = ?",
@@ -2601,10 +2618,27 @@ app.post("/api/elections", async (req, res) => {
 
 app.put("/api/elections/:id", async (req, res) => {
   try {
-    const { name, year, type } = req.body;
+    const { 
+      name, 
+      year, 
+      type, 
+      election_body, 
+      pc_name, 
+      ac_name, 
+      urban_name, 
+      rural_name, 
+      election_description, 
+      electrol_release_date, 
+      total_all_booths, 
+      total_all_voters, 
+      total_male_voters, 
+      total_female_voters, 
+      total_transgender_voters, 
+      remarks 
+    } = req.body;
     await pool.query(
-      "UPDATE elections SET name = ?, year = ?, type = ? WHERE id = ?",
-      [name, year, type, req.params.id]
+      "UPDATE elections SET name = ?, year = ?, type = ?, election_body = ?, pc_name = ?, ac_name = ?, urban_name = ?, rural_name = ?, election_description = ?, electrol_release_date = ?, total_all_booths = ?, total_all_voters = ?, total_male_voters = ?, total_female_voters = ?, total_transgender_voters = ?, remarks = ? WHERE id = ?",
+      [name, year, type, election_body, pc_name, ac_name, urban_name, rural_name, election_description, electrol_release_date, total_all_booths, total_all_voters, total_male_voters, total_female_voters, total_transgender_voters, remarks, req.params.id]
     );
     const [rows] = await pool.query<any[]>(
       "SELECT * FROM elections WHERE id = ?",
