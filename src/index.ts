@@ -78,7 +78,7 @@ app.use(
     ],
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-  })
+  }),
 );
 
 app.use("/lkprglobal/API/Docs", swaggerUi.serve, swaggerUi.setup(specs));
@@ -130,7 +130,7 @@ interface AuthRequest extends Request {
 const authenticateToken = async (
   req: AuthRequest,
   res: Response,
-  next: () => void
+  next: () => void,
 ) => {
   try {
     const authHeader = req.headers["authorization"];
@@ -262,7 +262,7 @@ const pool = mysql.createPool({
 async function query<T = RowDataPacket[]>(
   sql: string,
   params?: any[],
-  retries: number = 3
+  retries: number = 3,
 ): Promise<T> {
   try {
     const [rows] = await pool.query<T & RowDataPacket[]>(sql, params); // returns rows only
@@ -281,7 +281,7 @@ async function query<T = RowDataPacket[]>(
       //console.log(`Query failed, retrying... (${retries} attempts left)`);
       // Wait before retrying
       await new Promise((resolve) =>
-        setTimeout(resolve, 500 + Math.random() * 1000)
+        setTimeout(resolve, 500 + Math.random() * 1000),
       );
       return query(sql, params, retries - 1);
     }
@@ -440,7 +440,7 @@ app.post("/api/register", async (req, res) => {
 
     const result: any = await query(
       "INSERT INTO admins (username, email, password, mobile, role) VALUES (?, ?, ?, ?, ?)",
-      [username, email, password, sanitizedMobile, role]
+      [username, email, password, sanitizedMobile, role],
     );
     const insertId = (result as any).insertId;
     return res.status(201).json({
@@ -778,7 +778,7 @@ app.post(
       // Query user with mobile and OTP, including otp_expiry
       const [results] = await query<RowDataPacket[]>(
         "SELECT id, username, created_at, is_verified, role, otp_expiry FROM admins WHERE mobile = ? AND otp = ?",
-        [sanitizedMobile, otp]
+        [sanitizedMobile, otp],
       );
 
       if (results.length === 0) {
@@ -802,13 +802,13 @@ app.post(
         JWT_SECRET,
         {
           expiresIn: "3d",
-        }
+        },
       );
 
       // Clear OTP and update is_verified
       await query(
         "UPDATE admins SET otp = NULL, otp_expiry = NULL, is_verified = 1 WHERE mobile = ?",
-        [sanitizedMobile]
+        [sanitizedMobile],
       );
 
       // Send response
@@ -832,7 +832,7 @@ app.post(
       }
       res.status(500).json({ success: false, message: "Server error" });
     }
-  }
+  },
 );
 
 // Validate Token endpoint
@@ -843,7 +843,7 @@ app.get(
     try {
       const rows = await query(
         "SELECT id, username, mobile, role FROM admins WHERE role = ?",
-        [req.user?.role]
+        [req.user?.role],
       );
 
       if (rows.length === 0) {
@@ -874,7 +874,7 @@ app.get(
       console.error("Validate token error:", error);
       res.status(500).json({ success: false, message: "Server error" });
     }
-  }
+  },
 );
 
 /**
@@ -898,7 +898,7 @@ app.get(
     if (res.headersSent) return;
     try {
       const rows = await query<RowDataPacket[]>(
-        "SELECT id, mobile, name_prefix, name, gender, imageData, imageType, date_of_birth, parents_name, address, education_qualification, caste, DATE_FORMAT(joining_date, '%d-%m-%Y') as joining_date, joining_details, party_member_number, voter_id, aadhar_number, tname, cname, dname, jname, status FROM users ORDER BY created_at DESC"
+        "SELECT id, mobile, name_prefix, name, gender, imageData, imageType, date_of_birth, parents_name, address, education_qualification, caste, DATE_FORMAT(joining_date, '%d-%m-%Y') as joining_date, joining_details, party_member_number, voter_id, aadhar_number, tname, cname, dname, jname, status FROM users ORDER BY created_at DESC",
       );
       const members = rows.map((row) => ({
         id: row.id,
@@ -929,7 +929,7 @@ app.get(
       console.error("Get members error:", error);
       res.status(500).json({ success: false, message: "Server error" });
     }
-  }
+  },
 );
 /**
  * @swagger
@@ -1067,7 +1067,7 @@ app.post(
           dname || null,
           jname || null,
           status || "செயல்பாட்டில் உள்ளார்",
-        ]
+        ],
       );
 
       if (result.affectedRows === 0) {
@@ -1099,7 +1099,7 @@ app.post(
       console.error(err);
       return res.status(500).json({ error: "Internal server error" });
     }
-  }
+  },
 );
 
 /**
@@ -1208,7 +1208,7 @@ app.put(
       // Get current member
       const rows: any = await query(
         "SELECT name, mobile FROM users WHERE id = ?",
-        [id]
+        [id],
       );
       if (!rows || rows.length === 0) {
         return res
@@ -1253,7 +1253,7 @@ app.put(
           dname || null,
           jname || null,
           id,
-        ]
+        ],
       );
 
       if (result.affectedRows === 0) {
@@ -1291,7 +1291,7 @@ app.put(
       console.error(err);
       return res.status(500).json({ error: "Internal server error" });
     }
-  }
+  },
 );
 
 /**
@@ -1362,7 +1362,7 @@ app.get(
     }
     try {
       const results = await query(
-        "SELECT DISTINCT tcode, ccode, dcode, jcode, tname, cname, dname, jname FROM teams"
+        "SELECT DISTINCT tcode, ccode, dcode, jcode, tname, cname, dname, jname FROM teams",
       );
       const positions = results as TeamRow[];
       res.json({ success: true, positions });
@@ -1375,7 +1375,7 @@ app.get(
       }
       res.status(500).json({ success: false, message: "Server error" });
     }
-  }
+  },
 );
 
 /**
@@ -1409,13 +1409,13 @@ app.get(
       const csv = [
         fields.join(","), // header row
         ...rows.map((row: any) =>
-          fields.map((f) => `"${row[f] ?? ""}"`).join(",")
+          fields.map((f) => `"${row[f] ?? ""}"`).join(","),
         ),
       ].join("\n");
       res.setHeader("Content-Type", "text/csv");
       res.setHeader(
         "Content-Disposition",
-        "attachment; filename=all_members.csv"
+        "attachment; filename=all_members.csv",
       );
       await res.send(csv);
       res.end();
@@ -1423,7 +1423,7 @@ app.get(
       console.error("Export all members error:", error);
       res.status(500).json({ success: false, message: "Server error" });
     }
-  }
+  },
 );
 
 /**
@@ -1461,7 +1461,7 @@ app.get(
       const csv = [
         fields.join(","), // header row
         ...rows.map((row: any) =>
-          fields.map((f) => `"${row[f] ?? ""}"`).join(",")
+          fields.map((f) => `"${row[f] ?? ""}"`).join(","),
         ),
       ].join("\n");
 
@@ -1476,7 +1476,7 @@ app.get(
       console.error("Export single member error:", error);
       res.status(500).json({ success: false, message: "Server error" });
     }
-  }
+  },
 );
 
 /**
@@ -1507,7 +1507,7 @@ app.get(
         .status(500)
         .json({ success: false, message: "Failed to fetch events" });
     }
-  }
+  },
 );
 
 /**
@@ -1590,7 +1590,7 @@ app.post("/api/add-event", eventUpload.array("images", 3), async (req, res) => {
         description,
         imageBuffers[0] || null,
         imageTypes[0] || null,
-      ]
+      ],
     );
 
     return res.json({
@@ -1652,7 +1652,7 @@ app.get(
         .status(500)
         .json({ success: false, message: "Failed to fetch event" });
     }
-  }
+  },
 );
 
 /**
@@ -1753,8 +1753,8 @@ app.put(
       const imagePaths = req.files
         ? (req.files as Express.Multer.File[]).map((file) => file.path)
         : oldImage
-        ? [oldImage]
-        : [];
+          ? [oldImage]
+          : [];
 
       await query(
         `UPDATE events SET title=?, type=?, date=?, time=?, location=?, description=?, images=? WHERE id=?`,
@@ -1767,7 +1767,7 @@ app.put(
           description,
           JSON.stringify(imagePaths),
           id,
-        ]
+        ],
       );
 
       res.json({ success: true, message: "Event updated successfully" });
@@ -1777,7 +1777,7 @@ app.put(
         .status(500)
         .json({ success: false, message: "Failed to update event" });
     }
-  }
+  },
 );
 
 /**
@@ -1819,7 +1819,7 @@ app.delete(
         .status(500)
         .json({ success: false, message: "Failed to delete event" });
     }
-  }
+  },
 );
 
 /**
@@ -1842,14 +1842,14 @@ app.get(
   async (req: Request, res: Response) => {
     try {
       const rows = await query(
-        "SELECT id, taskname, tunion, tpartyunion, tpanchayat, tvillage, year, amount, imageData, imageType, fundname, boothno, status, created_at, updated_at FROM funds ORDER BY created_at DESC"
+        "SELECT id, taskname, tunion, tpartyunion, tpanchayat, tvillage, year, amount, imageData, imageType, fundname, boothno, status, created_at, updated_at FROM funds ORDER BY created_at DESC",
       );
       res.json({ success: true, funds: rows, count: rows.length });
     } catch (error) {
       console.error("Get funds error:", error);
       res.status(500).json({ success: false, message: "Server error" });
     }
-  }
+  },
 );
 
 /**
@@ -1898,7 +1898,7 @@ app.get(
       console.error("Get fund error:", error);
       res.status(500).json({ success: false, message: "Server error" });
     }
-  }
+  },
 );
 
 /**
@@ -1989,7 +1989,7 @@ app.post(
           fundname || null,
           boothno || null,
           status || "Active",
-        ]
+        ],
       );
 
       return res.status(201).json({
@@ -2015,7 +2015,7 @@ app.post(
       console.error("Add fund error:", error);
       res.status(500).json({ success: false, message: "Server error" });
     }
-  }
+  },
 );
 
 /**
@@ -2108,7 +2108,7 @@ app.put(
           boothno !== undefined ? boothno : rows[0].boothno,
           status || rows[0].status,
           id,
-        ]
+        ],
       );
 
       if (result.affectedRows === 0) {
@@ -2137,7 +2137,7 @@ app.put(
       console.error("Update fund error:", error);
       res.status(500).json({ success: false, message: "Server error" });
     }
-  }
+  },
 );
 
 /**
@@ -2194,7 +2194,7 @@ app.delete(
       console.error("Delete fund error:", error);
       res.status(500).json({ success: false, message: "Server error" });
     }
-  }
+  },
 );
 
 app.get("/api/regions", async (req, res) => {
@@ -2259,7 +2259,7 @@ app.get("/api/mlacalender", async (req, res) => {
       FROM mla_calender
       ORDER BY start_datetime
       `,
-      [start]
+      [start],
     );
 
     res.json(rows);
@@ -2289,7 +2289,7 @@ app.get("/api/mlacalender/search", async (req, res) => {
       WHERE title LIKE ?
       ORDER BY start_datetime
       `,
-      [`%${title}%`]
+      [`%${title}%`],
     );
 
     res.json(rows);
@@ -2312,7 +2312,7 @@ app.post("/api/addmlacalender", async (req, res) => {
       (title, description, start_datetime, end_datetime, color_code)
       VALUES (?, ?, ?, ?, ?)
       `,
-      [title, description, start, end, color]
+      [title, description, start, end, color],
     );
 
     res.status(201).json({ message: "Event created" });
@@ -2341,7 +2341,7 @@ app.put("/api/updatemlacalender/:id", async (req, res) => {
         color_code = ?
       WHERE id = ?
       `,
-      [title, description, start, end, color, id]
+      [title, description, start, end, color, id],
     );
 
     res.json({ message: "calender updated" });
@@ -2370,7 +2370,7 @@ app.delete("/api/deletemlacalender/:id", async (req, res) => {
 app.get("/api/export/pdf", async (_req: Request, res: Response) => {
   try {
     const [rows]: any = await pool.query(
-      "SELECT title, description, DATE_FORMAT(start_datetime, '%d-%m-%Y') as start_datetime, DATE_FORMAT(end_datetime, '%d-%m-%Y') as end_datetime, color_code FROM mla_calender ORDER BY start_datetime ASC"
+      "SELECT title, description, DATE_FORMAT(start_datetime, '%d-%m-%Y') as start_datetime, DATE_FORMAT(end_datetime, '%d-%m-%Y') as end_datetime, color_code FROM mla_calender ORDER BY start_datetime ASC",
     );
 
     const doc = new PDFDocument({ margin: 30, size: "A4" });
@@ -2378,7 +2378,7 @@ app.get("/api/export/pdf", async (_req: Request, res: Response) => {
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
-      "attachment; filename=mla-calendar.pdf"
+      "attachment; filename=mla-calendar.pdf",
     );
 
     doc.pipe(res);
@@ -2392,7 +2392,7 @@ app.get("/api/export/pdf", async (_req: Request, res: Response) => {
         .text(
           `${index + 1}. ${e.title}
 Start: ${dayjs(e.start).format("DD MMM YYYY HH:mm")}
-End: ${dayjs(e.end).format("DD MMM YYYY HH:mm")}`
+End: ${dayjs(e.end).format("DD MMM YYYY HH:mm")}`,
         )
         .moveDown(0.5);
     });
@@ -2407,7 +2407,7 @@ End: ${dayjs(e.end).format("DD MMM YYYY HH:mm")}`
 app.get("/api/export/excel", async (_req: Request, res: Response) => {
   try {
     const [rows]: any = await pool.query(
-      "SELECT title, description,DATE_FORMAT(start_datetime, '%d-%m-%Y') as start_datetime, DATE_FORMAT(end_datetime, '%d-%m-%Y') as end_datetime, color_code FROM mla_calender ORDER BY start_datetime ASC"
+      "SELECT title, description,DATE_FORMAT(start_datetime, '%d-%m-%Y') as start_datetime, DATE_FORMAT(end_datetime, '%d-%m-%Y') as end_datetime, color_code FROM mla_calender ORDER BY start_datetime ASC",
     );
 
     const workbook = new ExcelJS.Workbook();
@@ -2424,11 +2424,11 @@ app.get("/api/export/excel", async (_req: Request, res: Response) => {
 
     res.setHeader(
       "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
     res.setHeader(
       "Content-Disposition",
-      "attachment; filename=mla-calendar-events.xlsx"
+      "attachment; filename=mla-calendar-events.xlsx",
     );
 
     await workbook.xlsx.write(res);
@@ -2470,7 +2470,7 @@ app.post(
         `INSERT IGNORE INTO mla_calendar_events
          (title, DATE_FORMAT(start_datetime, '%d-%m-%Y') as start_datetime, DATE_FORMAT(end_datetime, '%d-%m-%Y') as end_datetime, color_code)
          VALUES ?`,
-        [rows]
+        [rows],
       );
 
       res.json({
@@ -2482,7 +2482,7 @@ app.post(
       console.error(err);
       res.status(500).json({ message: "Import failed" });
     }
-  }
+  },
 );
 
 // ==================== PARTY ROUTES ====================
@@ -2500,7 +2500,7 @@ app.get("/api/parties/:id", async (req, res) => {
   try {
     const [rows] = await pool.query<any[]>(
       "SELECT * FROM parties WHERE id = ?",
-      [req.params.id]
+      [req.params.id],
     );
     if (rows.length === 0)
       return res.status(404).json({ error: "Party not found" });
@@ -2516,11 +2516,11 @@ app.post("/api/parties", async (req, res) => {
     const id = crypto.randomUUID();
     await pool.query(
       "INSERT INTO parties (id, name, short_name, color) VALUES (?, ?, ?, ?)",
-      [id, name, short_name, color || "#6B7280"]
+      [id, name, short_name, color || "#6B7280"],
     );
     const [rows] = await pool.query<any[]>(
       "SELECT * FROM parties WHERE id = ?",
-      [id]
+      [id],
     );
     res.status(201).json(rows[0]);
   } catch (error: any) {
@@ -2533,11 +2533,11 @@ app.put("/api/parties/:id", async (req, res) => {
     const { name, short_name, color } = req.body;
     await pool.query(
       "UPDATE parties SET name = ?, short_name = ?, color = ? WHERE id = ?",
-      [name, short_name, color, req.params.id]
+      [name, short_name, color, req.params.id],
     );
     const [rows] = await pool.query<any[]>(
       "SELECT * FROM parties WHERE id = ?",
-      [req.params.id]
+      [req.params.id],
     );
     res.json(rows[0]);
   } catch (error: any) {
@@ -2554,12 +2554,115 @@ app.delete("/api/parties/:id", async (req, res) => {
   }
 });
 
+// ==================== PARTY_DETAILS ROUTES ====================
+
+app.get("/api/party_details", async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      "SELECT * FROM party_details ORDER BY created_at DESC",
+    );
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/party_details/:id", async (req, res) => {
+  try {
+    const [rows] = await pool.query<any[]>(
+      "SELECT * FROM party_details WHERE id = ?",
+      [req.params.id],
+    );
+    if (rows.length === 0)
+      return res.status(404).json({ error: "Party detail not found" });
+    res.json(rows[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/add_party_details", async (req, res) => {
+  try {
+    const {
+      ondriyum_town,
+      ondriya_name,
+      total_booths,
+      booth_range,
+      booth_numbers,
+    } = req.body;
+    const id = crypto.randomUUID();
+
+    await pool.query(
+      "INSERT INTO party_details (id, ondriyum_town, ondriya_name, total_booths, booth_range, booth_numbers) VALUES (?, ?, ?, ?, ?, ?)",
+      [
+        id,
+        ondriyum_town || null,
+        ondriya_name || null,
+        total_booths || 0,
+        booth_range || null,
+        Array.isArray(booth_numbers)
+          ? JSON.stringify(booth_numbers)
+          : booth_numbers || null,
+      ],
+    );
+    const [rows] = await pool.query<any[]>(
+      "SELECT * FROM party_details WHERE id = ?",
+      [id],
+    );
+    res.status(201).json(rows[0]);
+  } catch (error: any) {
+    console.error("Error in add_party_details:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/party_details/:id", async (req, res) => {
+  try {
+    const {
+      ondriyum_town,
+      ondriya_name,
+      total_booths,
+      booth_range,
+      booth_numbers,
+    } = req.body;
+    await pool.query(
+      "UPDATE party_details SET ondriyum_town = ?, ondriya_name = ?, total_booths = ?, booth_range = ?, booth_numbers = ? WHERE id = ?",
+      [
+        ondriyum_town,
+        ondriya_name,
+        total_booths,
+        booth_range,
+        Array.isArray(booth_numbers)
+          ? JSON.stringify(booth_numbers)
+          : booth_numbers,
+        req.params.id,
+      ],
+    );
+    const [rows] = await pool.query<any[]>(
+      "SELECT * FROM party_details WHERE id = ?",
+      [req.params.id],
+    );
+    res.json(rows[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/party_details/:id", async (req, res) => {
+  try {
+    await pool.query("DELETE FROM party_details WHERE id = ?", [req.params.id]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ==================== ELECTION ROUTES ====================
 
 app.get("/api/elections", async (req, res) => {
   try {
     const [rows] = await pool.query(
-      "SELECT * FROM elections ORDER BY year DESC"
+      "SELECT * FROM elections ORDER BY year DESC",
     );
     res.json(rows);
   } catch (error: any) {
@@ -2571,7 +2674,7 @@ app.get("/api/elections/:id", async (req, res) => {
   try {
     const [rows] = await pool.query<any[]>(
       "SELECT * FROM elections WHERE id = ?",
-      [req.params.id]
+      [req.params.id],
     );
     if (rows.length === 0)
       return res.status(404).json({ error: "Election not found" });
@@ -2583,32 +2686,50 @@ app.get("/api/elections/:id", async (req, res) => {
 
 app.post("/api/elections", async (req, res) => {
   try {
-    const { 
-      name, 
-      year, 
-      type, 
-      election_body, 
-      pc_name, 
-      ac_name, 
-      urban_name, 
-      rural_name, 
-      election_description, 
-      electrol_release_date, 
-      total_all_booths, 
-      total_all_voters, 
-      total_male_voters, 
-      total_female_voters, 
-      total_transgender_voters, 
-      remarks 
+    const {
+      name,
+      year,
+      type,
+      election_body,
+      pc_name,
+      ac_name,
+      urban_name,
+      rural_name,
+      election_description,
+      electrol_release_date,
+      total_all_booths,
+      total_all_voters,
+      total_male_voters,
+      total_female_voters,
+      total_transgender_voters,
+      remarks,
     } = req.body;
     const id = crypto.randomUUID();
     await pool.query(
       "INSERT INTO elections (id, name, year, type, election_body, pc_name, ac_name, urban_name, rural_name, election_description, electrol_release_date, total_all_booths, total_all_voters, total_male_voters, total_female_voters, total_transgender_voters, remarks) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [id, name, year, type || "general", election_body || null, pc_name || null, ac_name || null, urban_name || null, rural_name || null, election_description || null, electrol_release_date || null, total_all_booths || 0, total_all_voters || 0, total_male_voters || 0, total_female_voters || 0, total_transgender_voters || 0, remarks || null]
+      [
+        id,
+        name,
+        year,
+        type || "general",
+        election_body || null,
+        pc_name || null,
+        ac_name || null,
+        urban_name || null,
+        rural_name || null,
+        election_description || null,
+        electrol_release_date || null,
+        total_all_booths || 0,
+        total_all_voters || 0,
+        total_male_voters || 0,
+        total_female_voters || 0,
+        total_transgender_voters || 0,
+        remarks || null,
+      ],
     );
     const [rows] = await pool.query<any[]>(
       "SELECT * FROM elections WHERE id = ?",
-      [id]
+      [id],
     );
     res.status(201).json(rows[0]);
   } catch (error: any) {
@@ -2618,31 +2739,49 @@ app.post("/api/elections", async (req, res) => {
 
 app.put("/api/elections/:id", async (req, res) => {
   try {
-    const { 
-      name, 
-      year, 
-      type, 
-      election_body, 
-      pc_name, 
-      ac_name, 
-      urban_name, 
-      rural_name, 
-      election_description, 
-      electrol_release_date, 
-      total_all_booths, 
-      total_all_voters, 
-      total_male_voters, 
-      total_female_voters, 
-      total_transgender_voters, 
-      remarks 
+    const {
+      name,
+      year,
+      type,
+      election_body,
+      pc_name,
+      ac_name,
+      urban_name,
+      rural_name,
+      election_description,
+      electrol_release_date,
+      total_all_booths,
+      total_all_voters,
+      total_male_voters,
+      total_female_voters,
+      total_transgender_voters,
+      remarks,
     } = req.body;
     await pool.query(
       "UPDATE elections SET name = ?, year = ?, type = ?, election_body = ?, pc_name = ?, ac_name = ?, urban_name = ?, rural_name = ?, election_description = ?, electrol_release_date = ?, total_all_booths = ?, total_all_voters = ?, total_male_voters = ?, total_female_voters = ?, total_transgender_voters = ?, remarks = ? WHERE id = ?",
-      [name, year, type, election_body, pc_name, ac_name, urban_name, rural_name, election_description, electrol_release_date, total_all_booths, total_all_voters, total_male_voters, total_female_voters, total_transgender_voters, remarks, req.params.id]
+      [
+        name,
+        year,
+        type,
+        election_body,
+        pc_name,
+        ac_name,
+        urban_name,
+        rural_name,
+        election_description,
+        electrol_release_date,
+        total_all_booths,
+        total_all_voters,
+        total_male_voters,
+        total_female_voters,
+        total_transgender_voters,
+        remarks,
+        req.params.id,
+      ],
     );
     const [rows] = await pool.query<any[]>(
       "SELECT * FROM elections WHERE id = ?",
-      [req.params.id]
+      [req.params.id],
     );
     res.json(rows[0]);
   } catch (error: any) {
@@ -2667,7 +2806,7 @@ app.get("/api/test/booths", async (req, res) => {
     const [count] = await pool.query("SELECT COUNT(*) as total FROM booths");
     const [sample] = await pool.query("SELECT * FROM booths LIMIT 3");
     const [elections] = await pool.query(
-      "SELECT COUNT(*) as total FROM elections"
+      "SELECT COUNT(*) as total FROM elections",
     );
 
     res.json({
@@ -2728,7 +2867,7 @@ app.get("/api/booths/:id", async (req, res) => {
 
     const [booth] = await pool.query<any[]>(
       "SELECT * FROM booths WHERE id = ?",
-      [id]
+      [id],
     );
 
     if (booth.length === 0) {
@@ -2758,13 +2897,13 @@ app.get("/api/booths/:id", async (req, res) => {
        JOIN parties p ON br.party_id = p.id 
        WHERE br.booth_id = ?
        ORDER BY br.votes DESC`,
-      [booth[0].total_voters, id, id, id]
+      [booth[0].total_voters, id, id, id],
     );
 
     // Calculate total votes cast and turnout
     const totalVotesCast = (results as any[]).reduce(
       (sum, result) => sum + (result.votes || 0),
-      0
+      0,
     );
     const turnoutPercentage =
       booth[0].total_voters > 0
@@ -2841,12 +2980,12 @@ app.post("/api/booths", async (req, res) => {
         total_polled_votes || 0,
         total_votes || 0,
         sections || null,
-      ]
+      ],
     );
 
     const [rows] = await pool.query<any[]>(
       "SELECT * FROM booths WHERE id = ?",
-      [id]
+      [id],
     );
 
     res.status(201).json({
@@ -2879,7 +3018,7 @@ app.put("/api/booths/:id", async (req, res) => {
     // Check if booth exists
     const [existing] = await pool.query<any[]>(
       "SELECT id FROM booths WHERE id = ?",
-      [id]
+      [id],
     );
 
     if (existing.length === 0) {
@@ -2904,7 +3043,7 @@ app.put("/api/booths/:id", async (req, res) => {
         total_votes || 0,
         sections || null,
         id,
-      ]
+      ],
     );
 
     if ((result as any).affectedRows === 0) {
@@ -2916,7 +3055,7 @@ app.put("/api/booths/:id", async (req, res) => {
 
     const [rows] = await pool.query<any[]>(
       "SELECT * FROM booths WHERE id = ?",
-      [id]
+      [id],
     );
 
     res.json({
@@ -2936,7 +3075,7 @@ app.delete("/api/booths/:id", async (req, res) => {
     // Check if booth exists
     const [existing] = await pool.query<any[]>(
       "SELECT id FROM booths WHERE id = ?",
-      [id]
+      [id],
     );
 
     if (existing.length === 0) {
@@ -3082,7 +3221,7 @@ app.post("/api/booth_results", async (req, res) => {
     const id = crypto.randomUUID();
     await pool.query(
       `INSERT INTO booth_results (id, booth_id, party_id, votes) VALUES (?, ?, ?, ?)`,
-      [id, booth_id, party_id, votes]
+      [id, booth_id, party_id, votes],
     );
 
     // Return created result with percentages
@@ -3106,7 +3245,7 @@ app.post("/api/booth_results", async (req, res) => {
       JOIN booths b ON br.booth_id = b.id
       WHERE br.id = ?
     `,
-      [id]
+      [id],
     );
 
     res.status(201).json({
@@ -3134,7 +3273,7 @@ app.put("/api/booth_results/:id", async (req, res) => {
 
     const [result] = await pool.query(
       "UPDATE booth_results SET votes = ? WHERE id = ?",
-      [votes, id]
+      [votes, id],
     );
 
     if ((result as any).affectedRows === 0) {
@@ -3162,7 +3301,7 @@ app.put("/api/booth_results/:id", async (req, res) => {
       JOIN booths b ON br.booth_id = b.id
       WHERE br.id = ?
     `,
-      [id]
+      [id],
     );
 
     res.json({
@@ -3186,7 +3325,7 @@ app.put("/api/booth_results/:boothId/:partyId", async (req, res) => {
 
     const [result] = await pool.query(
       "UPDATE booth_results SET votes = ? WHERE booth_id = ? AND party_id = ?",
-      [votes, boothId, partyId]
+      [votes, boothId, partyId],
     );
 
     if ((result as any).affectedRows === 0) {
@@ -3214,7 +3353,7 @@ app.put("/api/booth_results/:boothId/:partyId", async (req, res) => {
       JOIN booths b ON br.booth_id = b.id
       WHERE br.booth_id = ? AND br.party_id = ?
     `,
-      [boothId, partyId]
+      [boothId, partyId],
     );
 
     res.json({
@@ -3231,7 +3370,7 @@ app.delete("/api/booth_results/:boothId/:partyId", async (req, res) => {
   try {
     const [result] = await pool.query(
       "DELETE FROM booth_results WHERE booth_id = ? AND party_id = ?",
-      [req.params.boothId, req.params.partyId]
+      [req.params.boothId, req.params.partyId],
     );
 
     if ((result as any).affectedRows === 0) {
@@ -3536,7 +3675,7 @@ app.get("/api/analytics/chart-data/:electionId", async (req, res) => {
         totalLocations: (locationData as any[]).length,
         totalVotes: (partyData as any[]).reduce(
           (sum, party) => sum + party.votes,
-          0
+          0,
         ),
       },
     });
@@ -3702,6 +3841,109 @@ app.get("/api/polling/live-results", async (req, res) => {
   }
 });
 
+// ==================== PARTY_UNIONS ROUTES ====================
+
+app.get("/api/party_unions", async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      "SELECT id, name, created_at FROM party_unions ORDER BY name",
+    );
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/party_unions/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rows] = await pool.query<any[]>(
+      "SELECT id, name, created_at FROM party_unions WHERE id = ?",
+      [id],
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: "Party union not found" });
+    }
+
+    res.json(rows[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/party_unions", async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: "Name is required" });
+    }
+
+    const id = crypto.randomUUID();
+    await pool.query("INSERT INTO party_unions (id, name) VALUES (?, ?)", [
+      id,
+      name,
+    ]);
+
+    const [rows] = await pool.query<any[]>(
+      "SELECT id, name, created_at FROM party_unions WHERE id = ?",
+      [id],
+    );
+
+    res.status(201).json(rows[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/party_unions/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: "Name is required" });
+    }
+
+    const [result] = await pool.query(
+      "UPDATE party_unions SET name = ? WHERE id = ?",
+      [name, id],
+    );
+
+    if ((result as any).affectedRows === 0) {
+      return res.status(404).json({ error: "Party union not found" });
+    }
+
+    const [rows] = await pool.query<any[]>(
+      "SELECT id, name, created_at FROM party_unions WHERE id = ?",
+      [id],
+    );
+
+    res.json(rows[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete("/api/party_unions/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [result] = await pool.query("DELETE FROM party_unions WHERE id = ?", [
+      id,
+    ]);
+
+    if ((result as any).affectedRows === 0) {
+      return res.status(404).json({ error: "Party union not found" });
+    }
+
+    res.json({ message: "Party union deleted successfully" });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ==================== SEARCH ROUTES ====================
 
 app.get("/api/search/booths", async (req, res) => {
@@ -3711,13 +3953,13 @@ app.get("/api/search/booths", async (req, res) => {
 
     const limit = Math.min(
       100,
-      Math.max(1, parseInt(req.query.limit as string) || 50)
+      Math.max(1, parseInt(req.query.limit as string) || 50),
     );
     const offset = Math.max(0, parseInt(req.query.offset as string) || 0);
 
     const [rows] = await pool.query<any[]>(
       "CALL sp_search_booths(?, ?, ?, ?)",
-      [term || null, election_id || null, limit, offset]
+      [term || null, election_id || null, limit, offset],
     );
 
     res.json(rows);
@@ -3751,7 +3993,7 @@ app.post("/api/bulk/booths", async (req, res) => {
           booth.female_voters || 0,
           booth.transgender_voters || 0,
           booth.total_voters || 0,
-        ]
+        ],
       );
       results.push({ id, ...booth });
     }
@@ -3775,7 +4017,7 @@ app.post("/api/bulk/results", async (req, res) => {
     for (const result of results) {
       await connection.query(
         `INSERT INTO booth_results (id, booth_id, party_id, votes) VALUES (UUID(), ?, ?, ?) ON DUPLICATE KEY UPDATE votes = ?`,
-        [result.booth_id, result.party_id, result.votes, result.votes]
+        [result.booth_id, result.party_id, result.votes, result.votes],
       );
     }
 
@@ -3800,7 +4042,7 @@ app.post("/api/import/excel", upload.single("file"), async (req, res) => {
     const { election_id } = req.body;
     const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
     const data = XLSX.utils.sheet_to_json(
-      workbook.Sheets[workbook.SheetNames[0]]
+      workbook.Sheets[workbook.SheetNames[0]],
     );
 
     await connection.beginTransaction();
@@ -3822,7 +4064,7 @@ app.post("/api/import/excel", upload.single("file"), async (req, res) => {
           parseInt(String(row.female_voters)) || 0,
           parseInt(String(row.transgender_voters)) || 0,
           parseInt(String(row.total_voters)) || 0,
-        ]
+        ],
       );
       importedCount++;
     }
@@ -3852,17 +4094,17 @@ app.get("/api/export/excel", async (req, res) => {
     XLSX.utils.book_append_sheet(
       workbook,
       XLSX.utils.json_to_sheet(rows),
-      "Election Data"
+      "Election Data",
     );
     const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
 
     res.setHeader(
       "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
     res.setHeader(
       "Content-Disposition",
-      "attachment; filename=election_data.xlsx"
+      "attachment; filename=election_data.xlsx",
     );
     res.send(buffer);
   } catch (error: any) {
