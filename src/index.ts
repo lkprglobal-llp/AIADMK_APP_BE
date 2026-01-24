@@ -1031,15 +1031,15 @@ app.post(
 
     try {
       // 1. Get current member
-      const rows: any = await query("SELECT name FROM users WHERE mobile = ?", [
-        mobile,
-      ]);
+      // const rows: any = await query("SELECT name FROM users WHERE mobile = ?", [
+      //   mobile,
+      // ]);
 
-      if (rows.length != 0) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Member Already Registered" });
-      }
+      // if (rows.length != 0) {
+      //   return res
+      //     .status(404)
+      //     .json({ success: false, message: "Member Already Registered" });
+      // }
 
       // Insert member
       const result: any = await query(
