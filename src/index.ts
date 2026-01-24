@@ -1198,6 +1198,7 @@ app.put(
       cname,
       tname,
       jname,
+      status,
     } = req.body;
 
     const id = req.params.id;
@@ -1229,7 +1230,7 @@ app.put(
          SET mobile = ?, name_prefix = ?, name = ?, gender = ?, imageData = ?, imageType = ?, date_of_birth = ?, parents_name = ?, address = ?, 
              education_qualification = ?, caste = ?, joining_date = ?, 
              joining_details = ?, party_member_number = ?, voter_id = ?, 
-             aadhar_number = ?, tname = ?, cname = ?, dname = ?, jname = ? 
+             aadhar_number = ?, tname = ?, cname = ?, dname = ?, jname = ?, status = ? 
          WHERE id = ?`,
         [
           mobile || null,
@@ -1252,6 +1253,7 @@ app.put(
           cname || null,
           dname || null,
           jname || null,
+          status || "செயல்பாட்டில் உள்ளார்",
           id,
         ],
       );
@@ -1285,6 +1287,7 @@ app.put(
           cname,
           tname,
           jname,
+          status,
         },
       });
     } catch (err) {
