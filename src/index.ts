@@ -2592,11 +2592,12 @@ app.post("/api/add_party_details", async (req, res) => {
       total_booths,
       booth_range,
       booth_numbers,
+      year,
     } = req.body;
     const id = crypto.randomUUID();
 
     await pool.query(
-      "INSERT INTO party_details (id, ondriyum_town, ondriya_name, total_booths, booth_range, booth_numbers) VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT INTO party_details (id, ondriyum_town, ondriya_name, total_booths, booth_range, booth_numbers, year) VALUES (?, ?, ?, ?, ?, ?, ?)",
       [
         id,
         ondriyum_town || null,
@@ -2606,6 +2607,7 @@ app.post("/api/add_party_details", async (req, res) => {
         Array.isArray(booth_numbers)
           ? JSON.stringify(booth_numbers)
           : booth_numbers || null,
+        year || null,
       ],
     );
     const [rows] = await pool.query<any[]>(
@@ -2627,9 +2629,10 @@ app.put("/api/party_details/:id", async (req, res) => {
       total_booths,
       booth_range,
       booth_numbers,
+      year,
     } = req.body;
     await pool.query(
-      "UPDATE party_details SET ondriyum_town = ?, ondriya_name = ?, total_booths = ?, booth_range = ?, booth_numbers = ? WHERE id = ?",
+      "UPDATE party_details SET ondriyum_town = ?, ondriya_name = ?, total_booths = ?, booth_range = ?, booth_numbers = ?, year = ? WHERE id = ?",
       [
         ondriyum_town,
         ondriya_name,
@@ -2638,6 +2641,7 @@ app.put("/api/party_details/:id", async (req, res) => {
         Array.isArray(booth_numbers)
           ? JSON.stringify(booth_numbers)
           : booth_numbers,
+        year,
         req.params.id,
       ],
     );
